@@ -1,0 +1,97 @@
+import { useState } from 'react'
+import { X } from 'lucide-react'
+import { supabase } from '../lib/supabase'
+import { useAuth } from '../contexts/AuthContext'
+import toast from 'react-hot-toast'
+
+const COLORS = [
+  '#3B82F6', '#10B981', '#F59E0B', '#EF4444',
+  '#8B5CF6', '#EC4899', '#06B6D4', '#84CC16',
+  '#F97316', '#14B8A6', '#6366F1', '#A855F7',
+]
+
+export default function ProjectModal({ project, onClose, onSaved }) {
+  const { user } = useAuth()
+  const [name, setName] = useState(project?.name ?? '')
+  const [color, setColor] = useState(project?.color ?? COLORS[0])
+  const [saving, setSaving] = useState(false)
+
+  async function handleSave() {
+    if (!name.trim()) { toast.error('Name is required'); return }
+    setSaving(true)
+
+    if (project) {
+      const { error } = await supabase
+        .from('projects')
+        .update({ name: name.trim(), color })
+        .eq('id', project.id)
+      if (error) { toast.error('Save failed'); setSaving(false); return }
+    } else {
+      const { error } = await supabase
+        .from('projects')
+        .insert({ name: name.trim(), color, created_by: user.id })
+      if (error) { toast.error('Could not create project'); setSaving(false); return }
+    }
+
+    toast.success(project ? 'Project updated' : 'Project created')
+    onSaved()
+  }
+
+  return (
+    <div className="fixed inset-0 bg-black/50 flex items-center justify-center z-50 p-4">
+      <div className="bg-white rounded-2xl shadow-2xl w-full max-w-sm">
+        <div className="flex items-center justify-between px-6 py-4 border-b border-slate-100">
+          <h2 className="text-base font-semibold text-slate-800">
+            {project ? 'Edit project' : 'New project'}
+          </h2>
+          <button onClick={onClose} className="text-slate-400 hover:text-slate-600">
+            <X size={18} />
+          </button>
+        </div>
+
+        <div className="px-6 py-5 space-y-5">
+          <div>
+            <label className="block text-xs font-medium text-slate-600 mb-1.5">Name</label>
+            <input
+              type="text"
+              value={name}
+              onChange={e => setName(e.target.value)}
+              onKeyDown={e => e.key === 'Enter' && handleSave()}
+              className="w-full border border-slate-200 rounded-lg px-3 py-2 text-sm outline-none focus:ring-2 focus:ring-blue-500"
+              autoFocus
+            />
+          </div>
+          <div>
+            <label className="block text-xs font-medium text-slate-600 mb-2">Color</label>
+            <div className="flex flex-wrap gap-2">
+              {COLORS.map(c => (
+                <button
+                  key={c}
+                  type="button"
+                  onClick={() => setColor(c)}
+                  className={`w-7 h-7 rounded-full transition-all ${
+                    color === c ? 'scale-125 ring-2 ring-offset-2 ring-slate-400' : 'hover:scale-110'
+                  }`}
+                  style={{ backgroundColor: c }}
+                />
+              ))}
+            </div>
+          </div>
+        </div>
+
+        <div className="flex justify-end gap-2 px-6 py-4 border-t border-slate-100">
+          <button onClick={onClose} className="px-4 py-2 text-sm text-slate-600 hover:bg-slate-50 rounded-lg">
+            Cancel
+          </button>
+          <button
+            onClick={handleSave}
+            disabled={saving}
+            className="px-4 py-2 text-sm bg-blue-600 hover:bg-blue-700 text-white rounded-lg font-medium disabled:opacity-50"
+          >
+            {saving ? 'Saving…' : 'Save'}
+          </button>
+        </div>
+      </div>
+    </div>
+  )
+}
