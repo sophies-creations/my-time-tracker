@@ -36,7 +36,7 @@ export default function ProjectModal({ project, onClose, onSaved }) {
       onSaved()
     } catch (err) {
       console.error('[ProjectModal] save error:', err)
-      toast.error(project ? 'Save failed' : 'Could not create project')
+      toast.error(err?.message ?? (project ? 'Save failed' : 'Could not create project'))
       setSaving(false)
     }
   }
