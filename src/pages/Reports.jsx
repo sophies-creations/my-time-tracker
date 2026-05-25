@@ -99,9 +99,9 @@ export default function Reports() {
     }
   }
 
-  function handleExport() {
+  async function handleExport() {
     try {
-      exportToExcel(entries, `TimeReport_${startDate}_to_${endDate}`)
+      await exportToExcel(entries, `TimeReport_${startDate}_to_${endDate}`)
       toast.success('Excel file downloaded')
     } catch {
       toast.error('Export failed')

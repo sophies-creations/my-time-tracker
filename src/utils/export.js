@@ -1,7 +1,7 @@
-import * as XLSX from 'xlsx'
 import { formatDuration } from './formatters'
 
-export function exportToExcel(entries, filename = 'TimeReport') {
+export async function exportToExcel(entries, filename = 'TimeReport') {
+  const XLSX = await import('xlsx')
   const rows = entries.map(entry => ({
     Date: entry.start_time.slice(0, 10),
     'Start Time': entry.start_time.slice(11, 16),
