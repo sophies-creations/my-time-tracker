@@ -59,40 +59,46 @@ export default function ManualEntryModal({ entry, onClose, onSaved }) {
     if (duration <= 0) { toast.error('End time must be after start time'); return }
 
     setSaving(true)
-    let entryId = entry?.id
+    try {
+      let entryId = entry?.id
 
-    if (entry) {
-      const { error } = await supabase.from('time_entries').update({
-        description: description.trim(),
-        project_id: projectId || null,
-        start_time: startISO,
-        end_time: endISO,
-        duration,
-      }).eq('id', entry.id)
-      if (error) { toast.error('Save failed'); setSaving(false); return }
-    } else {
-      const { data, error } = await supabase.from('time_entries').insert({
-        user_id: user.id,
-        description: description.trim(),
-        project_id: projectId || null,
-        start_time: startISO,
-        end_time: endISO,
-        duration,
-        is_running: false,
-      }).select().single()
-      if (error) { toast.error('Save failed'); setSaving(false); return }
-      entryId = data.id
+      if (entry) {
+        const { error } = await supabase.from('time_entries').update({
+          description: description.trim(),
+          project_id: projectId || null,
+          start_time: startISO,
+          end_time: endISO,
+          duration,
+        }).eq('id', entry.id)
+        if (error) throw error
+      } else {
+        const { data, error } = await supabase.from('time_entries').insert({
+          user_id: user.id,
+          description: description.trim(),
+          project_id: projectId || null,
+          start_time: startISO,
+          end_time: endISO,
+          duration,
+          is_running: false,
+        }).select().single()
+        if (error) throw error
+        entryId = data.id
+      }
+
+      await supabase.from('time_entry_tags').delete().eq('time_entry_id', entryId)
+      if (tagIds.length) {
+        await supabase.from('time_entry_tags').insert(
+          tagIds.map(tag_id => ({ time_entry_id: entryId, tag_id }))
+        )
+      }
+
+      toast.success(entry ? 'Entry updated' : 'Entry added')
+      onSaved()
+    } catch (err) {
+      console.error('[ManualEntryModal] save error:', err)
+      toast.error('Save failed')
+      setSaving(false)
     }
-
-    await supabase.from('time_entry_tags').delete().eq('time_entry_id', entryId)
-    if (tagIds.length) {
-      await supabase.from('time_entry_tags').insert(
-        tagIds.map(tag_id => ({ time_entry_id: entryId, tag_id }))
-      )
-    }
-
-    toast.success(entry ? 'Entry updated' : 'Entry added')
-    onSaved()
   }
 
   return (

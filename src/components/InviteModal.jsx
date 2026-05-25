@@ -15,19 +15,24 @@ export default function InviteModal({ onClose, onSaved }) {
   async function handleCreate() {
     if (!email.trim()) { toast.error('Email is required'); return }
     setSaving(true)
+    try {
+      const { data, error } = await supabase
+        .from('invites')
+        .insert({ email: email.trim().toLowerCase(), role, invited_by: user.id })
+        .select()
+        .single()
 
-    const { data, error } = await supabase
-      .from('invites')
-      .insert({ email: email.trim().toLowerCase(), role, invited_by: user.id })
-      .select()
-      .single()
+      if (error) throw error
 
-    if (error) { toast.error('Failed to create invite'); setSaving(false); return }
-
-    const link = `${window.location.origin}/accept-invite?token=${data.token}`
-    setInviteLink(link)
-    handleCopy(link)
-    setSaving(false)
+      const link = `${window.location.origin}/accept-invite?token=${data.token}`
+      setInviteLink(link)
+      handleCopy(link)
+    } catch (err) {
+      console.error('[InviteModal] create error:', err)
+      toast.error('Failed to create invite')
+    } finally {
+      setSaving(false)
+    }
   }
 
   async function handleCopy(link) {

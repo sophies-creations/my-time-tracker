@@ -19,22 +19,26 @@ export default function ProjectModal({ project, onClose, onSaved }) {
   async function handleSave() {
     if (!name.trim()) { toast.error('Name is required'); return }
     setSaving(true)
-
-    if (project) {
-      const { error } = await supabase
-        .from('projects')
-        .update({ name: name.trim(), color })
-        .eq('id', project.id)
-      if (error) { toast.error('Save failed'); setSaving(false); return }
-    } else {
-      const { error } = await supabase
-        .from('projects')
-        .insert({ name: name.trim(), color, created_by: user.id })
-      if (error) { toast.error('Could not create project'); setSaving(false); return }
+    try {
+      if (project) {
+        const { error } = await supabase
+          .from('projects')
+          .update({ name: name.trim(), color })
+          .eq('id', project.id)
+        if (error) throw error
+      } else {
+        const { error } = await supabase
+          .from('projects')
+          .insert({ name: name.trim(), color, created_by: user.id })
+        if (error) throw error
+      }
+      toast.success(project ? 'Project updated' : 'Project created')
+      onSaved()
+    } catch (err) {
+      console.error('[ProjectModal] save error:', err)
+      toast.error(project ? 'Save failed' : 'Could not create project')
+      setSaving(false)
     }
-
-    toast.success(project ? 'Project updated' : 'Project created')
-    onSaved()
   }
 
   return (
