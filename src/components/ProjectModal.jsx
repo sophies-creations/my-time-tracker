@@ -1,7 +1,6 @@
 import { useState } from 'react'
 import { X } from 'lucide-react'
 import { supabase } from '../lib/supabase'
-import { useAuth } from '../contexts/AuthContext'
 import toast from 'react-hot-toast'
 
 const COLORS = [
@@ -11,7 +10,6 @@ const COLORS = [
 ]
 
 export default function ProjectModal({ project, onClose, onSaved }) {
-  const { user } = useAuth()
   const [name, setName] = useState(project?.name ?? '')
   const [color, setColor] = useState(project?.color ?? COLORS[0])
   const [saving, setSaving] = useState(false)
@@ -19,17 +17,21 @@ export default function ProjectModal({ project, onClose, onSaved }) {
   async function handleSave() {
     if (!name.trim()) { toast.error('Name is required'); return }
     setSaving(true)
+    const controller = new AbortController()
+    const timeout = setTimeout(() => controller.abort(), 10_000)
     try {
       if (project) {
         const { error } = await supabase
           .from('projects')
           .update({ name: name.trim(), color })
           .eq('id', project.id)
+          .abortSignal(controller.signal)
         if (error) throw error
       } else {
         const { error } = await supabase
           .from('projects')
-          .insert({ name: name.trim(), color, created_by: user.id })
+          .insert({ name: name.trim(), color })
+          .abortSignal(controller.signal)
         if (error) throw error
       }
       toast.success(project ? 'Project updated' : 'Project created')
@@ -38,6 +40,8 @@ export default function ProjectModal({ project, onClose, onSaved }) {
       console.error('[ProjectModal] save error:', err)
       toast.error(err?.message ?? (project ? 'Save failed' : 'Could not create project'))
       setSaving(false)
+    } finally {
+      clearTimeout(timeout)
     }
   }
 
