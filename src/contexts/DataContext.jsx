@@ -18,22 +18,20 @@ export function DataProvider({ children }) {
       return
     }
 
-    const queries = [
+    Promise.all([
       supabase.from('projects').select('id, name, color').eq('archived', false).order('name'),
       supabase.from('tags').select('id, name').order('name'),
-    ]
-
-    if (!isClient) {
-      queries.push(
-        supabase.from('clients').select('id, name, email, profile_id, client_projects(project_id)').order('name')
-      )
-    }
-
-    Promise.all(queries).then(([{ data: proj }, { data: t }, clientRes]) => {
+    ]).then(([{ data: proj }, { data: t }]) => {
       setProjects(proj ?? [])
       setTags(t ?? [])
-      if (clientRes) setClients(clientRes.data ?? [])
     })
+
+    if (!isClient) {
+      supabase.from('clients')
+        .select('id, name, email, profile_id, client_projects(project_id)')
+        .order('name')
+        .then(({ data }) => setClients(data ?? []))
+    }
   }, [user, isClient])
 
   const refreshProjects = () =>
