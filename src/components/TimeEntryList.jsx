@@ -1,5 +1,5 @@
 import { useMemo } from 'react'
-import { Pencil, Trash2 } from 'lucide-react'
+import { Pencil, Trash2, Clock } from 'lucide-react'
 import { supabase } from '../lib/supabase'
 import { formatDuration, formatTime, groupByDate, formatDateHeader } from '../utils/formatters'
 import toast from 'react-hot-toast'
@@ -51,10 +51,7 @@ export default function TimeEntryList({ entries, onEdit, onRefresh }) {
                         <span className="text-xs text-slate-500">{entry.project.name}</span>
                       )}
                       {entry.time_entry_tags?.map(({ tag }) => (
-                        <span
-                          key={tag.id}
-                          className="text-xs bg-slate-100 text-slate-500 px-1.5 py-0.5 rounded"
-                        >
+                        <span key={tag.id} className="text-xs bg-orchid-50 text-orchid-700 px-1.5 py-0.5 rounded">
                           {tag.name}
                         </span>
                       ))}
@@ -69,7 +66,7 @@ export default function TimeEntryList({ entries, onEdit, onRefresh }) {
                   <div className="flex items-center gap-0.5 opacity-0 group-hover:opacity-100 transition-opacity">
                     <button
                       onClick={() => onEdit(entry)}
-                      className="p-1.5 text-slate-400 hover:text-blue-600 hover:bg-blue-50 rounded transition-colors"
+                      className="p-1.5 text-slate-400 hover:text-orchid-600 hover:bg-orchid-50 rounded transition-colors"
                     >
                       <Pencil size={13} />
                     </button>
@@ -87,25 +84,5 @@ export default function TimeEntryList({ entries, onEdit, onRefresh }) {
         )
       })}
     </div>
-  )
-}
-
-function Clock({ className, size }) {
-  return (
-    <svg
-      xmlns="http://www.w3.org/2000/svg"
-      width={size}
-      height={size}
-      viewBox="0 0 24 24"
-      fill="none"
-      stroke="currentColor"
-      strokeWidth="2"
-      strokeLinecap="round"
-      strokeLinejoin="round"
-      className={className}
-    >
-      <circle cx="12" cy="12" r="10" />
-      <polyline points="12 6 12 12 16 14" />
-    </svg>
   )
 }

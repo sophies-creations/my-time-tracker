@@ -1,1 +1,15 @@
 @import "tailwindcss";
+
+@theme {
+  --color-orchid-50: #fdf4fd;
+  --color-orchid-100: #fae8fa;
+  --color-orchid-200: #f4cdf2;
+  --color-orchid-300: #eba5e9;
+  --color-orchid-400: #e07fdc;
+  --color-orchid-500: #da70d6;
+  --color-orchid-600: #c44fba;
+  --color-orchid-700: #a33e98;
+  --color-orchid-800: #87347d;
+  --color-orchid-900: #6e2d67;
+  --color-orchid-950: #420140;
+}

@@ -10,14 +10,14 @@ export default function ManualEntryModal({ entry, onClose, onSaved }) {
   const { user } = useAuth()
   const { projects, tags: allTags, refreshTags } = useData()
   const [description, setDescription] = useState('')
-  const [projectId, setProjectId] = useState('')
-  const [tagIds, setTagIds] = useState([])
-  const [date, setDate] = useState(format(new Date(), 'yyyy-MM-dd'))
-  const [startTime, setStartTime] = useState('09:00')
-  const [endTime, setEndTime] = useState('10:00')
-  const [tags, setTags] = useState(allTags)
-  const [newTag, setNewTag] = useState('')
-  const [saving, setSaving] = useState(false)
+  const [projectId, setProjectId]     = useState('')
+  const [tagIds, setTagIds]           = useState([])
+  const [date, setDate]               = useState(format(new Date(), 'yyyy-MM-dd'))
+  const [startTime, setStartTime]     = useState('09:00')
+  const [endTime, setEndTime]         = useState('10:00')
+  const [tags, setTags]               = useState(allTags)
+  const [newTag, setNewTag]           = useState('')
+  const [saving, setSaving]           = useState(false)
 
   useEffect(() => { setTags(allTags) }, [allTags])
 
@@ -36,11 +36,8 @@ export default function ManualEntryModal({ entry, onClose, onSaved }) {
     const name = newTag.trim()
     if (!name) return
     const { data, error } = await supabase
-      .from('tags')
-      .insert({ name, created_by: user.id })
-      .select()
-      .single()
-    if (error) { toast.error('Tag already exists or could not be created'); return }
+      .from('tags').insert({ name }).select().single()
+    if (error) { toast.error('Tag already exists'); return }
     setTags(prev => [...prev, data].sort((a, b) => a.name.localeCompare(b.name)))
     setTagIds(prev => [...prev, data.id])
     setNewTag('')
@@ -53,45 +50,34 @@ export default function ManualEntryModal({ entry, onClose, onSaved }) {
 
   async function handleSave() {
     const startISO = new Date(`${date}T${startTime}:00`).toISOString()
-    const endISO = new Date(`${date}T${endTime}:00`).toISOString()
+    const endISO   = new Date(`${date}T${endTime}:00`).toISOString()
     const duration = Math.floor((new Date(endISO) - new Date(startISO)) / 1000)
-
     if (duration <= 0) { toast.error('End time must be after start time'); return }
 
     setSaving(true)
     try {
       let entryId = entry?.id
-
       if (entry) {
         const { error } = await supabase.from('time_entries').update({
-          description: description.trim(),
-          project_id: projectId || null,
-          start_time: startISO,
-          end_time: endISO,
-          duration,
+          description: description.trim(), project_id: projectId || null,
+          start_time: startISO, end_time: endISO, duration,
         }).eq('id', entry.id)
         if (error) throw error
       } else {
         const { data, error } = await supabase.from('time_entries').insert({
-          user_id: user.id,
-          description: description.trim(),
-          project_id: projectId || null,
-          start_time: startISO,
-          end_time: endISO,
-          duration,
-          is_running: false,
+          user_id: user.id, description: description.trim(),
+          project_id: projectId || null, start_time: startISO,
+          end_time: endISO, duration, is_running: false,
         }).select().single()
         if (error) throw error
         entryId = data.id
       }
-
       await supabase.from('time_entry_tags').delete().eq('time_entry_id', entryId)
       if (tagIds.length) {
         await supabase.from('time_entry_tags').insert(
           tagIds.map(tag_id => ({ time_entry_id: entryId, tag_id }))
         )
       }
-
       toast.success(entry ? 'Entry updated' : 'Entry added')
       onSaved()
     } catch (err) {
@@ -108,7 +94,7 @@ export default function ManualEntryModal({ entry, onClose, onSaved }) {
           <h2 className="text-base font-semibold text-slate-800">
             {entry ? 'Edit entry' : 'Add time entry'}
           </h2>
-          <button onClick={onClose} className="text-slate-400 hover:text-slate-600 transition-colors">
+          <button onClick={onClose} className="text-slate-400 hover:text-slate-600">
             <X size={18} />
           </button>
         </div>
@@ -117,21 +103,17 @@ export default function ManualEntryModal({ entry, onClose, onSaved }) {
           <div>
             <label className="block text-xs font-medium text-slate-600 mb-1.5">Description</label>
             <input
-              type="text"
-              value={description}
-              onChange={e => setDescription(e.target.value)}
-              placeholder="What did you work on?"
-              className="w-full border border-slate-200 rounded-lg px-3 py-2 text-sm outline-none focus:ring-2 focus:ring-blue-500 focus:border-transparent"
-              autoFocus
+              type="text" value={description} onChange={e => setDescription(e.target.value)}
+              placeholder="What did you work on?" autoFocus
+              className="w-full border border-slate-200 rounded-lg px-3 py-2 text-sm outline-none focus:ring-2 focus:ring-orchid-500 focus:border-transparent"
             />
           </div>
 
           <div>
             <label className="block text-xs font-medium text-slate-600 mb-1.5">Project</label>
             <select
-              value={projectId}
-              onChange={e => setProjectId(e.target.value)}
-              className="w-full border border-slate-200 rounded-lg px-3 py-2 text-sm outline-none focus:ring-2 focus:ring-blue-500"
+              value={projectId} onChange={e => setProjectId(e.target.value)}
+              className="w-full border border-slate-200 rounded-lg px-3 py-2 text-sm outline-none focus:ring-2 focus:ring-orchid-500"
             >
               <option value="">No project</option>
               {projects.map(p => <option key={p.id} value={p.id}>{p.name}</option>)}
@@ -139,33 +121,19 @@ export default function ManualEntryModal({ entry, onClose, onSaved }) {
           </div>
 
           <div className="grid grid-cols-3 gap-3">
-            <div>
-              <label className="block text-xs font-medium text-slate-600 mb-1.5">Date</label>
-              <input
-                type="date"
-                value={date}
-                onChange={e => setDate(e.target.value)}
-                className="w-full border border-slate-200 rounded-lg px-2 py-2 text-sm outline-none focus:ring-2 focus:ring-blue-500"
-              />
-            </div>
-            <div>
-              <label className="block text-xs font-medium text-slate-600 mb-1.5">Start</label>
-              <input
-                type="time"
-                value={startTime}
-                onChange={e => setStartTime(e.target.value)}
-                className="w-full border border-slate-200 rounded-lg px-2 py-2 text-sm outline-none focus:ring-2 focus:ring-blue-500"
-              />
-            </div>
-            <div>
-              <label className="block text-xs font-medium text-slate-600 mb-1.5">End</label>
-              <input
-                type="time"
-                value={endTime}
-                onChange={e => setEndTime(e.target.value)}
-                className="w-full border border-slate-200 rounded-lg px-2 py-2 text-sm outline-none focus:ring-2 focus:ring-blue-500"
-              />
-            </div>
+            {[
+              { label: 'Date',  type: 'date', value: date,      setter: setDate },
+              { label: 'Start', type: 'time', value: startTime, setter: setStartTime },
+              { label: 'End',   type: 'time', value: endTime,   setter: setEndTime },
+            ].map(({ label, type, value, setter }) => (
+              <div key={label}>
+                <label className="block text-xs font-medium text-slate-600 mb-1.5">{label}</label>
+                <input
+                  type={type} value={value} onChange={e => setter(e.target.value)}
+                  className="w-full border border-slate-200 rounded-lg px-2 py-2 text-sm outline-none focus:ring-2 focus:ring-orchid-500"
+                />
+              </div>
+            ))}
           </div>
 
           <div>
@@ -173,14 +141,8 @@ export default function ManualEntryModal({ entry, onClose, onSaved }) {
             <div className="flex flex-wrap gap-1.5 mb-2 min-h-6">
               {tags.map(tag => (
                 <button
-                  key={tag.id}
-                  type="button"
-                  onClick={() => toggleTag(tag.id)}
-                  className={`text-xs px-2.5 py-1 rounded-full border transition-colors ${
-                    tagIds.includes(tag.id)
-                      ? 'bg-blue-600 text-white border-blue-600'
-                      : 'bg-white text-slate-600 border-slate-200 hover:border-blue-400'
-                  }`}
+                  key={tag.id} type="button" onClick={() => toggleTag(tag.id)}
+                  className={`text-xs px-2.5 py-1 rounded-full border transition-colors ${tagIds.includes(tag.id) ? 'bg-orchid-600 text-white border-orchid-600' : 'bg-white text-slate-600 border-slate-200 hover:border-orchid-400'}`}
                 >
                   {tag.name}
                 </button>
@@ -188,16 +150,12 @@ export default function ManualEntryModal({ entry, onClose, onSaved }) {
             </div>
             <div className="flex gap-2">
               <input
-                type="text"
-                value={newTag}
-                onChange={e => setNewTag(e.target.value)}
+                type="text" value={newTag} onChange={e => setNewTag(e.target.value)}
                 onKeyDown={e => e.key === 'Enter' && (e.preventDefault(), createTag())}
                 placeholder="New tag…"
-                className="flex-1 border border-slate-200 rounded-lg px-3 py-1.5 text-xs outline-none focus:ring-2 focus:ring-blue-500"
+                className="flex-1 border border-slate-200 rounded-lg px-3 py-1.5 text-xs outline-none focus:ring-2 focus:ring-orchid-500"
               />
-              <button
-                type="button"
-                onClick={createTag}
+              <button type="button" onClick={createTag}
                 className="text-xs px-3 py-1.5 bg-slate-100 hover:bg-slate-200 text-slate-700 rounded-lg transition-colors"
               >
                 Add
@@ -207,16 +165,12 @@ export default function ManualEntryModal({ entry, onClose, onSaved }) {
         </div>
 
         <div className="flex justify-end gap-2 px-6 py-4 border-t border-slate-100">
-          <button
-            onClick={onClose}
-            className="px-4 py-2 text-sm text-slate-600 hover:bg-slate-50 rounded-lg transition-colors"
-          >
+          <button onClick={onClose} className="px-4 py-2 text-sm text-slate-600 hover:bg-slate-50 rounded-lg">
             Cancel
           </button>
           <button
-            onClick={handleSave}
-            disabled={saving}
-            className="px-4 py-2 text-sm bg-blue-600 hover:bg-blue-700 text-white rounded-lg font-medium disabled:opacity-50 transition-colors"
+            onClick={handleSave} disabled={saving}
+            className="px-4 py-2 text-sm bg-orchid-600 hover:bg-orchid-700 text-white rounded-lg font-medium disabled:opacity-50 transition-colors"
           >
             {saving ? 'Saving…' : 'Save'}
           </button>

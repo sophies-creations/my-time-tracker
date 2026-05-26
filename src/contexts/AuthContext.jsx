@@ -7,13 +7,9 @@ export function AuthProvider({ children }) {
   const [user, setUser]       = useState(null)
   const [profile, setProfile] = useState(null)
   const [loading, setLoading] = useState(true)
-  // Prevent concurrent fetchProfile calls for the same userId
   const fetchingFor = useRef(null)
 
   useEffect(() => {
-    // onAuthStateChange fires INITIAL_SESSION immediately on subscribe —
-    // no need to also call getSession(), which would start a second
-    // concurrent fetchProfile for the same user.
     const { data: { subscription } } = supabase.auth.onAuthStateChange(
       async (_event, session) => {
         const uid = session?.user?.id ?? null
@@ -25,7 +21,6 @@ export function AuthProvider({ children }) {
           return
         }
 
-        // Skip if we're already fetching for this exact user (e.g. token refresh)
         if (fetchingFor.current === uid) return
         fetchingFor.current = uid
         await fetchProfile(uid)
@@ -33,13 +28,8 @@ export function AuthProvider({ children }) {
       }
     )
 
-    // Absolute safety net: never leave the UI stuck beyond 12 seconds.
     const fallback = setTimeout(() => setLoading(false), 12_000)
-
-    return () => {
-      subscription.unsubscribe()
-      clearTimeout(fallback)
-    }
+    return () => { subscription.unsubscribe(); clearTimeout(fallback) }
   }, [])
 
   async function fetchProfile(userId) {
@@ -55,15 +45,11 @@ export function AuthProvider({ children }) {
         return
       }
 
-      // PGRST116 = no rows — profile not created yet (trigger missed signup)
       if (error?.code === 'PGRST116') {
-        // Race the RPC against a 7-second timer so a hanging call
-        // never blocks the UI indefinitely.
         await Promise.race([
           supabase.rpc('ensure_profile'),
           new Promise(resolve => setTimeout(resolve, 7_000)),
         ])
-
         const { data: created } = await supabase
           .from('profiles')
           .select('*')
@@ -73,7 +59,6 @@ export function AuthProvider({ children }) {
         return
       }
 
-      // Any other error (table missing, network, etc.)
       console.error('[AuthContext] fetchProfile error:', error)
       setProfile(null)
     } catch (err) {
@@ -103,6 +88,7 @@ export function AuthProvider({ children }) {
 
   const isAdmin   = profile?.role === 'admin'
   const isManager = profile?.role === 'manager' || isAdmin
+  const isClient  = profile?.role === 'client'
 
   return (
     <AuthContext.Provider value={{
@@ -114,6 +100,7 @@ export function AuthProvider({ children }) {
       signOut,
       isAdmin,
       isManager,
+      isClient,
       refreshProfile: () => user && fetchProfile(user.id),
     }}>
       {children}

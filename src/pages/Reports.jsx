@@ -1,6 +1,6 @@
 import { useState, useEffect, useCallback } from 'react'
-import { format, startOfToday, startOfWeek, endOfWeek, startOfMonth, endOfMonth } from 'date-fns'
-import { Download } from 'lucide-react'
+import { format, startOfToday, startOfWeek, endOfWeek, startOfMonth, endOfMonth, addWeeks, subWeeks, eachDayOfInterval, parseISO } from 'date-fns'
+import { Download, ChevronLeft, ChevronRight } from 'lucide-react'
 import { supabase } from '../lib/supabase'
 import { useAuth } from '../contexts/AuthContext'
 import { useData } from '../contexts/DataContext'
@@ -8,57 +8,87 @@ import { formatDuration } from '../utils/formatters'
 import { exportToExcel } from '../utils/export'
 import toast from 'react-hot-toast'
 
-const WEEK_START = { weekStartsOn: 1 }
+const WEEK_OPT = { weekStartsOn: 1 }
 
 const PRESETS = [
-  {
-    label: 'Today',
-    range: () => ({
-      start: format(startOfToday(), 'yyyy-MM-dd'),
-      end: format(new Date(), 'yyyy-MM-dd'),
-    }),
-  },
-  {
-    label: 'This week',
-    range: () => ({
-      start: format(startOfWeek(new Date(), WEEK_START), 'yyyy-MM-dd'),
-      end: format(endOfWeek(new Date(), WEEK_START), 'yyyy-MM-dd'),
-    }),
-  },
-  {
-    label: 'This month',
-    range: () => ({
-      start: format(startOfMonth(new Date()), 'yyyy-MM-dd'),
-      end: format(endOfMonth(new Date()), 'yyyy-MM-dd'),
-    }),
-  },
-  { label: 'Custom', range: null },
+  { label: 'Today',      range: () => ({ start: format(startOfToday(), 'yyyy-MM-dd'), end: format(new Date(), 'yyyy-MM-dd') }) },
+  { label: 'This week',  range: () => ({ start: format(startOfWeek(new Date(), WEEK_OPT), 'yyyy-MM-dd'), end: format(endOfWeek(new Date(), WEEK_OPT), 'yyyy-MM-dd') }) },
+  { label: 'This month', range: () => ({ start: format(startOfMonth(new Date()), 'yyyy-MM-dd'), end: format(endOfMonth(new Date()), 'yyyy-MM-dd') }) },
+  { label: 'Custom',     range: null },
 ]
+
+const CHART_COLORS = ['#DA70D6','#C44FBA','#A33E98','#3B82F6','#10B981','#F59E0B','#EF4444','#6366F1']
+
+function BarChart({ data }) {
+  const max = Math.max(...data.map(d => d.seconds), 1)
+  if (!data.length) return <p className="text-sm text-slate-400 py-4">No data for this period</p>
+  return (
+    <div className="space-y-2.5">
+      {data.map((d, i) => (
+        <div key={i} className="flex items-center gap-3">
+          <div className="w-28 text-right text-xs text-slate-500 truncate shrink-0">{d.label}</div>
+          <div className="flex-1 h-5 bg-slate-100 rounded-full overflow-hidden">
+            <div
+              className="h-full rounded-full transition-all duration-500"
+              style={{ width: `${Math.max((d.seconds / max) * 100, 2)}%`, backgroundColor: d.color || '#DA70D6' }}
+            />
+          </div>
+          <div className="w-20 text-xs font-mono text-slate-600 text-right shrink-0">
+            {formatDuration(d.seconds)}
+          </div>
+        </div>
+      ))}
+    </div>
+  )
+}
+
+function DonutChart({ segments, total }) {
+  const R = 38, circ = 2 * Math.PI * R
+  let cumulative = 0
+  if (!total) {
+    return (
+      <svg viewBox="0 0 100 100" className="w-36 h-36">
+        <circle cx="50" cy="50" r={R} fill="none" stroke="#f1f5f9" strokeWidth="14" />
+        <text x="50" y="54" textAnchor="middle" fill="#94a3b8" fontSize="8">No data</text>
+      </svg>
+    )
+  }
+  return (
+    <svg viewBox="0 0 100 100" className="w-36 h-36 -rotate-90">
+      {segments.map((seg, i) => {
+        const frac = seg.seconds / total
+        const dash = `${frac * circ} ${circ}`
+        const rot  = `rotate(${(cumulative / total) * 360} 50 50)`
+        cumulative += seg.seconds
+        return <circle key={i} cx="50" cy="50" r={R} fill="none" stroke={seg.color} strokeWidth="14" strokeDasharray={dash} transform={rot} />
+      })}
+    </svg>
+  )
+}
 
 export default function Reports() {
   const { isManager } = useAuth()
-  const { projects } = useData()
+  const { projects }  = useData()
+  const [tab, setTab] = useState('summary')
 
   const defaultRange = PRESETS[1].range()
-  const [preset, setPreset] = useState('This week')
-  const [startDate, setStartDate] = useState(defaultRange.start)
-  const [endDate, setEndDate] = useState(defaultRange.end)
+  const [preset, setPreset]         = useState('This week')
+  const [startDate, setStartDate]   = useState(defaultRange.start)
+  const [endDate, setEndDate]       = useState(defaultRange.end)
   const [filterProject, setFilterProject] = useState('')
   const [filterUser, setFilterUser] = useState('')
+  const [entries, setEntries]       = useState([])
+  const [users, setUsers]           = useState([])
+  const [loading, setLoading]       = useState(false)
+  const [weekRef, setWeekRef]       = useState(new Date())
 
-  const [entries, setEntries] = useState([])
-  const [users, setUsers] = useState([])
-  const [loading, setLoading] = useState(false)
-
-  useEffect(() => { fetchUsers() }, [isManager])
-
+  useEffect(() => { if (isManager) fetchUsers() }, [isManager])
   useEffect(() => { fetchEntries() }, [startDate, endDate, filterProject, filterUser])
 
   async function fetchUsers() {
-    if (isManager) {
-      const { data: u } = await supabase.from('profiles').select('id, full_name, email').order('full_name')
-      setUsers(u ?? [])
-    }
+    const { data } = await supabase.from('profiles')
+      .select('id, full_name, email').neq('role', 'client').order('full_name')
+    setUsers(data ?? [])
   }
 
   const fetchEntries = useCallback(async () => {
@@ -66,20 +96,13 @@ export default function Reports() {
     try {
       let q = supabase
         .from('time_entries')
-        .select(`
-          *,
-          project:projects(id, name, color),
-          user:profiles(id, full_name, email),
-          time_entry_tags(tag:tags(id, name))
-        `)
+        .select(`*, project:projects(id, name, color), user:profiles(id, full_name, email), time_entry_tags(tag:tags(id, name))`)
         .eq('is_running', false)
         .gte('start_time', `${startDate}T00:00:00`)
         .lte('start_time', `${endDate}T23:59:59`)
         .order('start_time', { ascending: false })
-
       if (filterProject) q = q.eq('project_id', filterProject)
-      if (filterUser) q = q.eq('user_id', filterUser)
-
+      if (filterUser)    q = q.eq('user_id', filterUser)
       const { data } = await q
       setEntries(data ?? [])
     } catch (err) {
@@ -92,31 +115,109 @@ export default function Reports() {
   function applyPreset(label) {
     setPreset(label)
     const p = PRESETS.find(p => p.label === label)
-    if (p?.range) {
-      const { start, end } = p.range()
-      setStartDate(start)
-      setEndDate(end)
-    }
+    if (p?.range) { const { start, end } = p.range(); setStartDate(start); setEndDate(end) }
   }
 
   async function handleExport() {
     try {
       await exportToExcel(entries, `TimeReport_${startDate}_to_${endDate}`)
       toast.success('Excel file downloaded')
-    } catch {
-      toast.error('Export failed')
-    }
+    } catch { toast.error('Export failed') }
   }
 
-  const totalSecs = entries.reduce((s, e) => s + (e.duration ?? 0), 0)
+  const totalSecs     = entries.reduce((s, e) => s + (e.duration ?? 0), 0)
   const uniqueProjects = new Set(entries.filter(e => e.project_id).map(e => e.project_id)).size
+
+  // Summary chart data
+  const byProject = Object.values(
+    entries.filter(e => e.project).reduce((acc, e) => {
+      const id = e.project.id
+      if (!acc[id]) acc[id] = { label: e.project.name, seconds: 0, color: e.project.color || CHART_COLORS[0] }
+      acc[id].seconds += e.duration ?? 0
+      return acc
+    }, {})
+  ).sort((a, b) => b.seconds - a.seconds)
+
+  const byUser = isManager ? Object.values(
+    entries.reduce((acc, e) => {
+      if (!e.user) return acc
+      const id = e.user.id
+      if (!acc[id]) acc[id] = { label: e.user.full_name || e.user.email, seconds: 0, color: CHART_COLORS[Object.keys(acc).length % CHART_COLORS.length] }
+      acc[id].seconds += e.duration ?? 0
+      return acc
+    }, {})
+  ).sort((a, b) => b.seconds - a.seconds) : []
+
+  // Weekly grid
+  const weekStart = startOfWeek(weekRef, WEEK_OPT)
+  const weekEnd   = endOfWeek(weekRef, WEEK_OPT)
+  const weekDays  = eachDayOfInterval({ start: weekStart, end: weekEnd })
+  const entriesByDay = entries.reduce((acc, e) => {
+    const day = e.start_time.slice(0, 10)
+    if (!acc[day]) acc[day] = []
+    acc[day].push(e)
+    return acc
+  }, {})
+
+  const filterBar = (
+    <div className="bg-white rounded-xl border border-slate-200 p-4 mb-5 space-y-3">
+      <div className="flex flex-wrap gap-2">
+        {PRESETS.map(p => (
+          <button key={p.label} onClick={() => applyPreset(p.label)}
+            className={`px-3 py-1.5 rounded-lg text-sm font-medium transition-colors ${preset === p.label ? 'bg-orchid-600 text-white' : 'bg-slate-100 text-slate-600 hover:bg-slate-200'}`}
+          >{p.label}</button>
+        ))}
+      </div>
+      {preset === 'Custom' && (
+        <div className="flex gap-3 flex-wrap">
+          {[['From', startDate, setStartDate], ['To', endDate, setEndDate]].map(([lbl, val, set]) => (
+            <div key={lbl}>
+              <label className="block text-xs text-slate-500 mb-1">{lbl}</label>
+              <input type="date" value={val} onChange={e => set(e.target.value)}
+                className="border border-slate-200 rounded-lg px-3 py-1.5 text-sm outline-none focus:ring-2 focus:ring-orchid-500" />
+            </div>
+          ))}
+        </div>
+      )}
+      <div className="flex gap-3 flex-wrap">
+        <select value={filterProject} onChange={e => setFilterProject(e.target.value)}
+          className="border border-slate-200 rounded-lg px-3 py-1.5 text-sm text-slate-600 outline-none focus:ring-2 focus:ring-orchid-500"
+        >
+          <option value="">All projects</option>
+          {projects.map(p => <option key={p.id} value={p.id}>{p.name}</option>)}
+        </select>
+        {isManager && (
+          <select value={filterUser} onChange={e => setFilterUser(e.target.value)}
+            className="border border-slate-200 rounded-lg px-3 py-1.5 text-sm text-slate-600 outline-none focus:ring-2 focus:ring-orchid-500"
+          >
+            <option value="">All users</option>
+            {users.map(u => <option key={u.id} value={u.id}>{u.full_name || u.email}</option>)}
+          </select>
+        )}
+      </div>
+    </div>
+  )
+
+  const statCards = (
+    <div className="grid grid-cols-3 gap-4 mb-5">
+      {[
+        { label: 'Total time', value: formatDuration(totalSecs), mono: true },
+        { label: 'Entries',    value: entries.length },
+        { label: 'Projects',   value: uniqueProjects },
+      ].map(({ label, value, mono }) => (
+        <div key={label} className="bg-white rounded-xl border border-slate-200 px-5 py-4">
+          <p className="text-xs text-slate-500 font-medium uppercase tracking-wide">{label}</p>
+          <p className={`text-2xl font-bold text-slate-800 mt-1 ${mono ? 'font-mono' : ''}`}>{value}</p>
+        </div>
+      ))}
+    </div>
+  )
 
   return (
     <div>
       <div className="flex items-center justify-between mb-6">
         <h1 className="text-2xl font-bold text-slate-800">Reports</h1>
-        <button
-          onClick={handleExport}
+        <button onClick={handleExport}
           className="flex items-center gap-2 bg-emerald-600 hover:bg-emerald-700 text-white px-4 py-2 rounded-lg text-sm font-medium transition-colors"
         >
           <Download size={16} />
@@ -124,140 +225,153 @@ export default function Reports() {
         </button>
       </div>
 
-      {/* Filters */}
-      <div className="bg-white rounded-xl border border-slate-200 p-4 mb-5 space-y-3">
-        <div className="flex flex-wrap gap-2">
-          {PRESETS.map(p => (
-            <button
-              key={p.label}
-              onClick={() => applyPreset(p.label)}
-              className={`px-3 py-1.5 rounded-lg text-sm font-medium transition-colors ${
-                preset === p.label
-                  ? 'bg-blue-600 text-white'
-                  : 'bg-slate-100 text-slate-600 hover:bg-slate-200'
-              }`}
-            >
-              {p.label}
-            </button>
-          ))}
-        </div>
-
-        {preset === 'Custom' && (
-          <div className="flex gap-3 flex-wrap">
-            <div>
-              <label className="block text-xs text-slate-500 mb-1">From</label>
-              <input
-                type="date"
-                value={startDate}
-                onChange={e => setStartDate(e.target.value)}
-                className="border border-slate-200 rounded-lg px-3 py-1.5 text-sm outline-none focus:ring-2 focus:ring-blue-500"
-              />
-            </div>
-            <div>
-              <label className="block text-xs text-slate-500 mb-1">To</label>
-              <input
-                type="date"
-                value={endDate}
-                onChange={e => setEndDate(e.target.value)}
-                className="border border-slate-200 rounded-lg px-3 py-1.5 text-sm outline-none focus:ring-2 focus:ring-blue-500"
-              />
-            </div>
-          </div>
-        )}
-
-        <div className="flex gap-3 flex-wrap">
-          <select
-            value={filterProject}
-            onChange={e => setFilterProject(e.target.value)}
-            className="border border-slate-200 rounded-lg px-3 py-1.5 text-sm text-slate-600 outline-none focus:ring-2 focus:ring-blue-500"
-          >
-            <option value="">All projects</option>
-            {projects.map(p => <option key={p.id} value={p.id}>{p.name}</option>)}
-          </select>
-          {isManager && (
-            <select
-              value={filterUser}
-              onChange={e => setFilterUser(e.target.value)}
-              className="border border-slate-200 rounded-lg px-3 py-1.5 text-sm text-slate-600 outline-none focus:ring-2 focus:ring-blue-500"
-            >
-              <option value="">All users</option>
-              {users.map(u => <option key={u.id} value={u.id}>{u.full_name || u.email}</option>)}
-            </select>
-          )}
-        </div>
-      </div>
-
-      {/* Summary cards */}
-      <div className="grid grid-cols-3 gap-4 mb-5">
-        {[
-          { label: 'Total time', value: formatDuration(totalSecs), mono: true },
-          { label: 'Entries', value: entries.length, mono: false },
-          { label: 'Projects', value: uniqueProjects, mono: false },
-        ].map(({ label, value, mono }) => (
-          <div key={label} className="bg-white rounded-xl border border-slate-200 px-5 py-4">
-            <p className="text-xs text-slate-500 font-medium uppercase tracking-wide">{label}</p>
-            <p className={`text-2xl font-bold text-slate-800 mt-1 ${mono ? 'font-mono' : ''}`}>{value}</p>
-          </div>
+      {/* Tabs */}
+      <div className="flex gap-1 mb-5 bg-slate-100 rounded-xl p-1 w-fit">
+        {['summary', 'detailed', 'weekly'].map(t => (
+          <button key={t} onClick={() => setTab(t)}
+            className={`px-4 py-1.5 rounded-lg text-sm font-medium capitalize transition-colors ${tab === t ? 'bg-white text-slate-800 shadow-sm' : 'text-slate-500 hover:text-slate-700'}`}
+          >{t}</button>
         ))}
       </div>
 
-      {/* Entries table */}
+      {filterBar}
+
       {loading ? (
         <div className="flex items-center justify-center py-16">
-          <div className="w-6 h-6 border-2 border-blue-600 border-t-transparent rounded-full animate-spin" />
+          <div className="w-6 h-6 border-2 border-orchid-600 border-t-transparent rounded-full animate-spin" />
         </div>
       ) : (
-        <div className="bg-white rounded-xl border border-slate-200 overflow-hidden">
-          <table className="w-full text-sm">
-            <thead>
-              <tr className="bg-slate-50 border-b border-slate-100">
-                <th className="text-left px-4 py-3 text-xs font-semibold text-slate-500 uppercase tracking-wide">Description</th>
-                <th className="text-left px-4 py-3 text-xs font-semibold text-slate-500 uppercase tracking-wide">Project</th>
-                {isManager && (
-                  <th className="text-left px-4 py-3 text-xs font-semibold text-slate-500 uppercase tracking-wide">User</th>
-                )}
-                <th className="text-left px-4 py-3 text-xs font-semibold text-slate-500 uppercase tracking-wide">Date</th>
-                <th className="text-right px-4 py-3 text-xs font-semibold text-slate-500 uppercase tracking-wide">Duration</th>
-              </tr>
-            </thead>
-            <tbody className="divide-y divide-slate-100">
-              {entries.map(entry => (
-                <tr key={entry.id} className="hover:bg-slate-50 transition-colors">
-                  <td className="px-4 py-3 text-slate-800 max-w-xs truncate">
-                    {entry.description || <span className="text-slate-400 italic">No description</span>}
-                  </td>
-                  <td className="px-4 py-3">
-                    {entry.project ? (
-                      <span className="flex items-center gap-2">
-                        <span className="w-2 h-2 rounded-full flex-shrink-0" style={{ backgroundColor: entry.project.color }} />
-                        <span className="text-slate-700">{entry.project.name}</span>
-                      </span>
-                    ) : <span className="text-slate-300">—</span>}
-                  </td>
-                  {isManager && (
-                    <td className="px-4 py-3 text-slate-600">
-                      {entry.user?.full_name || entry.user?.email || '—'}
-                    </td>
-                  )}
-                  <td className="px-4 py-3 text-slate-500">{entry.start_time.slice(0, 10)}</td>
-                  <td className="px-4 py-3 text-right font-mono text-slate-700">
-                    {formatDuration(entry.duration ?? 0)}
-                  </td>
-                </tr>
-              ))}
-              {!entries.length && (
-                <tr>
-                  <td
-                    colSpan={isManager ? 5 : 4}
-                    className="px-4 py-14 text-center text-slate-400"
-                  >
-                    No entries for this period
-                  </td>
-                </tr>
+        <>
+          {/* SUMMARY */}
+          {tab === 'summary' && (
+            <div className="space-y-5">
+              {statCards}
+              <div className="grid grid-cols-1 lg:grid-cols-3 gap-5">
+                <div className="lg:col-span-2 bg-white rounded-xl border border-slate-200 p-5">
+                  <h3 className="text-sm font-semibold text-slate-700 mb-4">Time by project</h3>
+                  <BarChart data={byProject} />
+                </div>
+                <div className="bg-white rounded-xl border border-slate-200 p-5 flex flex-col items-center justify-center">
+                  <h3 className="text-sm font-semibold text-slate-700 mb-4 self-start">Breakdown</h3>
+                  <DonutChart segments={byProject} total={totalSecs} />
+                  <div className="mt-3 space-y-1 w-full">
+                    {byProject.slice(0, 5).map((d, i) => (
+                      <div key={i} className="flex items-center gap-2 text-xs text-slate-600">
+                        <span className="w-2.5 h-2.5 rounded-full shrink-0" style={{ backgroundColor: d.color }} />
+                        <span className="flex-1 truncate">{d.label}</span>
+                        <span className="font-mono text-slate-500">{totalSecs ? Math.round((d.seconds / totalSecs) * 100) : 0}%</span>
+                      </div>
+                    ))}
+                  </div>
+                </div>
+              </div>
+              {isManager && byUser.length > 0 && (
+                <div className="bg-white rounded-xl border border-slate-200 p-5">
+                  <h3 className="text-sm font-semibold text-slate-700 mb-4">Time by team member</h3>
+                  <BarChart data={byUser} />
+                </div>
               )}
-            </tbody>
-          </table>
-        </div>
+            </div>
+          )}
+
+          {/* DETAILED */}
+          {tab === 'detailed' && (
+            <div className="space-y-5">
+              {statCards}
+              <div className="bg-white rounded-xl border border-slate-200 overflow-hidden">
+                <table className="w-full text-sm">
+                  <thead>
+                    <tr className="bg-slate-50 border-b border-slate-100">
+                      <th className="text-left px-4 py-3 text-xs font-semibold text-slate-500 uppercase tracking-wide">Description</th>
+                      <th className="text-left px-4 py-3 text-xs font-semibold text-slate-500 uppercase tracking-wide">Project</th>
+                      {isManager && <th className="text-left px-4 py-3 text-xs font-semibold text-slate-500 uppercase tracking-wide">User</th>}
+                      <th className="text-left px-4 py-3 text-xs font-semibold text-slate-500 uppercase tracking-wide">Date</th>
+                      <th className="text-right px-4 py-3 text-xs font-semibold text-slate-500 uppercase tracking-wide">Duration</th>
+                    </tr>
+                  </thead>
+                  <tbody className="divide-y divide-slate-100">
+                    {entries.map(entry => (
+                      <tr key={entry.id} className="hover:bg-slate-50 transition-colors">
+                        <td className="px-4 py-3 text-slate-800 max-w-xs truncate">
+                          {entry.description || <span className="text-slate-400 italic">No description</span>}
+                        </td>
+                        <td className="px-4 py-3">
+                          {entry.project ? (
+                            <span className="flex items-center gap-2">
+                              <span className="w-2 h-2 rounded-full shrink-0" style={{ backgroundColor: entry.project.color }} />
+                              <span className="text-slate-700">{entry.project.name}</span>
+                            </span>
+                          ) : <span className="text-slate-300">—</span>}
+                        </td>
+                        {isManager && <td className="px-4 py-3 text-slate-600">{entry.user?.full_name || entry.user?.email || '—'}</td>}
+                        <td className="px-4 py-3 text-slate-500">{entry.start_time.slice(0, 10)}</td>
+                        <td className="px-4 py-3 text-right font-mono text-slate-700">{formatDuration(entry.duration ?? 0)}</td>
+                      </tr>
+                    ))}
+                    {!entries.length && (
+                      <tr>
+                        <td colSpan={isManager ? 5 : 4} className="px-4 py-14 text-center text-slate-400">
+                          No entries for this period
+                        </td>
+                      </tr>
+                    )}
+                  </tbody>
+                </table>
+              </div>
+            </div>
+          )}
+
+          {/* WEEKLY */}
+          {tab === 'weekly' && (
+            <div>
+              <div className="flex items-center justify-between mb-4">
+                <button onClick={() => setWeekRef(subWeeks(weekRef, 1))} className="p-2 hover:bg-slate-100 rounded-lg">
+                  <ChevronLeft size={18} />
+                </button>
+                <span className="text-sm font-semibold text-slate-700">
+                  {format(weekStart, 'MMM d')} – {format(weekEnd, 'MMM d, yyyy')}
+                </span>
+                <button onClick={() => setWeekRef(addWeeks(weekRef, 1))} className="p-2 hover:bg-slate-100 rounded-lg">
+                  <ChevronRight size={18} />
+                </button>
+              </div>
+              <div className="grid grid-cols-7 gap-2">
+                {weekDays.map(day => {
+                  const key  = format(day, 'yyyy-MM-dd')
+                  const dayEntries = entriesByDay[key] ?? []
+                  const total = dayEntries.reduce((s, e) => s + (e.duration ?? 0), 0)
+                  const isToday = key === format(new Date(), 'yyyy-MM-dd')
+                  return (
+                    <div key={key} className={`bg-white rounded-xl border p-3 min-h-[120px] ${isToday ? 'border-orchid-400 ring-1 ring-orchid-300' : 'border-slate-200'}`}>
+                      <div className={`text-xs font-semibold mb-1 ${isToday ? 'text-orchid-600' : 'text-slate-400'}`}>
+                        {format(day, 'EEE')}
+                      </div>
+                      <div className={`text-sm font-bold mb-2 ${isToday ? 'text-orchid-700' : 'text-slate-700'}`}>
+                        {format(day, 'd')}
+                      </div>
+                      {total > 0 && (
+                        <div className="font-mono text-xs text-slate-600 font-medium mb-1">
+                          {formatDuration(total)}
+                        </div>
+                      )}
+                      <div className="space-y-0.5">
+                        {dayEntries.slice(0, 3).map(e => (
+                          <div key={e.id} className="text-xs text-slate-500 truncate flex items-center gap-1">
+                            <span className="w-1.5 h-1.5 rounded-full shrink-0" style={{ backgroundColor: e.project?.color ?? '#cbd5e1' }} />
+                            {e.description || e.project?.name || 'Entry'}
+                          </div>
+                        ))}
+                        {dayEntries.length > 3 && (
+                          <p className="text-xs text-slate-400">+{dayEntries.length - 3} more</p>
+                        )}
+                      </div>
+                    </div>
+                  )
+                })}
+              </div>
+            </div>
+          )}
+        </>
       )}
     </div>
   )

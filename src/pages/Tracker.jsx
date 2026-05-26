@@ -7,8 +7,8 @@ import ManualEntryModal from '../components/ManualEntryModal'
 
 export default function Tracker() {
   const { user } = useAuth()
-  const [entries, setEntries] = useState([])
-  const [loading, setLoading] = useState(true)
+  const [entries, setEntries]   = useState([])
+  const [loading, setLoading]   = useState(true)
   const [showModal, setShowModal] = useState(false)
   const [editEntry, setEditEntry] = useState(null)
 
@@ -17,11 +17,7 @@ export default function Tracker() {
     try {
       const { data } = await supabase
         .from('time_entries')
-        .select(`
-          *,
-          project:projects(id, name, color),
-          time_entry_tags(tag:tags(id, name))
-        `)
+        .select(`*, project:projects(id, name, color), time_entry_tags(tag:tags(id, name))`)
         .eq('user_id', user.id)
         .eq('is_running', false)
         .order('start_time', { ascending: false })
@@ -41,23 +37,13 @@ export default function Tracker() {
     return () => window.removeEventListener('timeentry:saved', handler)
   }, [fetchEntries])
 
-  function openAdd() {
-    setEditEntry(null)
-    setShowModal(true)
-  }
-
-  function openEdit(entry) {
-    setEditEntry(entry)
-    setShowModal(true)
-  }
-
   return (
     <div>
       <div className="flex items-center justify-between mb-6">
         <h1 className="text-2xl font-bold text-slate-800">Time Tracker</h1>
         <button
-          onClick={openAdd}
-          className="flex items-center gap-2 bg-blue-600 hover:bg-blue-700 text-white px-4 py-2 rounded-lg text-sm font-medium transition-colors"
+          onClick={() => { setEditEntry(null); setShowModal(true) }}
+          className="flex items-center gap-2 bg-orchid-600 hover:bg-orchid-700 text-white px-4 py-2 rounded-lg text-sm font-medium transition-colors"
         >
           <Plus size={16} />
           Add time
@@ -66,14 +52,10 @@ export default function Tracker() {
 
       {loading ? (
         <div className="flex items-center justify-center py-20">
-          <div className="w-6 h-6 border-2 border-blue-600 border-t-transparent rounded-full animate-spin" />
+          <div className="w-6 h-6 border-2 border-orchid-600 border-t-transparent rounded-full animate-spin" />
         </div>
       ) : (
-        <TimeEntryList
-          entries={entries}
-          onEdit={openEdit}
-          onRefresh={fetchEntries}
-        />
+        <TimeEntryList entries={entries} onEdit={e => { setEditEntry(e); setShowModal(true) }} onRefresh={fetchEntries} />
       )}
 
       {showModal && (

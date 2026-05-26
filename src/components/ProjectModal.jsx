@@ -1,18 +1,22 @@
 import { useState } from 'react'
 import { X } from 'lucide-react'
 import { supabase } from '../lib/supabase'
+import { useData } from '../contexts/DataContext'
 import toast from 'react-hot-toast'
 
 const COLORS = [
-  '#3B82F6', '#10B981', '#F59E0B', '#EF4444',
-  '#8B5CF6', '#EC4899', '#06B6D4', '#84CC16',
-  '#F97316', '#14B8A6', '#6366F1', '#A855F7',
+  '#DA70D6', '#C44FBA', '#A33E98',
+  '#10B981', '#F59E0B', '#EF4444',
+  '#3B82F6', '#EC4899', '#06B6D4',
+  '#84CC16', '#F97316', '#6366F1',
 ]
 
 export default function ProjectModal({ project, onClose, onSaved }) {
-  const [name, setName] = useState(project?.name ?? '')
-  const [color, setColor] = useState(project?.color ?? COLORS[0])
-  const [saving, setSaving] = useState(false)
+  const { clients } = useData()
+  const [name, setName]       = useState(project?.name ?? '')
+  const [color, setColor]     = useState(project?.color ?? COLORS[0])
+  const [clientId, setClientId] = useState(project?.client_id ?? '')
+  const [saving, setSaving]   = useState(false)
 
   async function handleSave() {
     if (!name.trim()) { toast.error('Name is required'); return }
@@ -23,14 +27,14 @@ export default function ProjectModal({ project, onClose, onSaved }) {
       if (project) {
         const { error } = await supabase
           .from('projects')
-          .update({ name: name.trim(), color })
+          .update({ name: name.trim(), color, client_id: clientId || null })
           .eq('id', project.id)
           .abortSignal(controller.signal)
         if (error) throw error
       } else {
         const { error } = await supabase
           .from('projects')
-          .insert({ name: name.trim(), color })
+          .insert({ name: name.trim(), color, client_id: clientId || null })
           .abortSignal(controller.signal)
         if (error) throw error
       }
@@ -38,7 +42,7 @@ export default function ProjectModal({ project, onClose, onSaved }) {
       onSaved()
     } catch (err) {
       console.error('[ProjectModal] save error:', err)
-      toast.error(err?.message ?? (project ? 'Save failed' : 'Could not create project'))
+      toast.error(err?.message ?? 'Save failed')
       setSaving(false)
     } finally {
       clearTimeout(timeout)
@@ -61,29 +65,34 @@ export default function ProjectModal({ project, onClose, onSaved }) {
           <div>
             <label className="block text-xs font-medium text-slate-600 mb-1.5">Name</label>
             <input
-              type="text"
-              value={name}
-              onChange={e => setName(e.target.value)}
-              onKeyDown={e => e.key === 'Enter' && handleSave()}
-              className="w-full border border-slate-200 rounded-lg px-3 py-2 text-sm outline-none focus:ring-2 focus:ring-blue-500"
-              autoFocus
+              type="text" value={name} onChange={e => setName(e.target.value)}
+              onKeyDown={e => e.key === 'Enter' && handleSave()} autoFocus
+              className="w-full border border-slate-200 rounded-lg px-3 py-2 text-sm outline-none focus:ring-2 focus:ring-orchid-500"
             />
           </div>
+
           <div>
             <label className="block text-xs font-medium text-slate-600 mb-2">Color</label>
             <div className="flex flex-wrap gap-2">
               {COLORS.map(c => (
                 <button
-                  key={c}
-                  type="button"
-                  onClick={() => setColor(c)}
-                  className={`w-7 h-7 rounded-full transition-all ${
-                    color === c ? 'scale-125 ring-2 ring-offset-2 ring-slate-400' : 'hover:scale-110'
-                  }`}
+                  key={c} type="button" onClick={() => setColor(c)}
+                  className={`w-7 h-7 rounded-full transition-all ${color === c ? 'scale-125 ring-2 ring-offset-2 ring-slate-400' : 'hover:scale-110'}`}
                   style={{ backgroundColor: c }}
                 />
               ))}
             </div>
+          </div>
+
+          <div>
+            <label className="block text-xs font-medium text-slate-600 mb-1.5">Client (optional)</label>
+            <select
+              value={clientId} onChange={e => setClientId(e.target.value)}
+              className="w-full border border-slate-200 rounded-lg px-3 py-2 text-sm outline-none focus:ring-2 focus:ring-orchid-500"
+            >
+              <option value="">No client</option>
+              {clients.map(c => <option key={c.id} value={c.id}>{c.name}</option>)}
+            </select>
           </div>
         </div>
 
@@ -92,9 +101,8 @@ export default function ProjectModal({ project, onClose, onSaved }) {
             Cancel
           </button>
           <button
-            onClick={handleSave}
-            disabled={saving}
-            className="px-4 py-2 text-sm bg-blue-600 hover:bg-blue-700 text-white rounded-lg font-medium disabled:opacity-50"
+            onClick={handleSave} disabled={saving}
+            className="px-4 py-2 text-sm bg-orchid-600 hover:bg-orchid-700 text-white rounded-lg font-medium disabled:opacity-50"
           >
             {saving ? 'Saving…' : 'Save'}
           </button>
