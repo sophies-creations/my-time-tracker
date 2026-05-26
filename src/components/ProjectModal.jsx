@@ -1,5 +1,5 @@
 import { useState } from 'react'
-import { X } from 'lucide-react'
+import { X, Globe, Lock } from 'lucide-react'
 import { supabase } from '../lib/supabase'
 import { useData } from '../contexts/DataContext'
 import toast from 'react-hot-toast'
@@ -13,10 +13,11 @@ const COLORS = [
 
 export default function ProjectModal({ project, onClose, onSaved }) {
   const { clients } = useData()
-  const [name, setName]       = useState(project?.name ?? '')
-  const [color, setColor]     = useState(project?.color ?? COLORS[0])
-  const [clientId, setClientId] = useState(project?.client_id ?? '')
-  const [saving, setSaving]   = useState(false)
+  const [name, setName]           = useState(project?.name ?? '')
+  const [color, setColor]         = useState(project?.color ?? COLORS[0])
+  const [clientId, setClientId]   = useState(project?.client_id ?? '')
+  const [visibility, setVisibility] = useState(project?.visibility ?? 'public')
+  const [saving, setSaving]       = useState(false)
 
   async function handleSave() {
     if (!name.trim()) { toast.error('Name is required'); return }
@@ -27,14 +28,14 @@ export default function ProjectModal({ project, onClose, onSaved }) {
       if (project) {
         const { error } = await supabase
           .from('projects')
-          .update({ name: name.trim(), color, client_id: clientId || null })
+          .update({ name: name.trim(), color, client_id: clientId || null, visibility })
           .eq('id', project.id)
           .abortSignal(controller.signal)
         if (error) throw error
       } else {
         const { error } = await supabase
           .from('projects')
-          .insert({ name: name.trim(), color, client_id: clientId || null })
+          .insert({ name: name.trim(), color, client_id: clientId || null, visibility })
           .abortSignal(controller.signal)
         if (error) throw error
       }
@@ -93,6 +94,36 @@ export default function ProjectModal({ project, onClose, onSaved }) {
               <option value="">No client</option>
               {clients.map(c => <option key={c.id} value={c.id}>{c.name}</option>)}
             </select>
+          </div>
+
+          <div>
+            <label className="block text-xs font-medium text-slate-600 mb-2">Access</label>
+            <div className="flex rounded-lg border border-slate-200 overflow-hidden">
+              <button
+                type="button"
+                onClick={() => setVisibility('public')}
+                className={`flex-1 flex items-center justify-center gap-1.5 px-3 py-2 text-sm font-medium transition-colors ${
+                  visibility === 'public'
+                    ? 'bg-orchid-600 text-white'
+                    : 'bg-white text-slate-500 hover:bg-slate-50'
+                }`}
+              >
+                <Globe size={13} />
+                Public
+              </button>
+              <button
+                type="button"
+                onClick={() => setVisibility('private')}
+                className={`flex-1 flex items-center justify-center gap-1.5 px-3 py-2 text-sm font-medium transition-colors border-l border-slate-200 ${
+                  visibility === 'private'
+                    ? 'bg-orchid-600 text-white'
+                    : 'bg-white text-slate-500 hover:bg-slate-50'
+                }`}
+              >
+                <Lock size={13} />
+                Private
+              </button>
+            </div>
           </div>
         </div>
 

@@ -15,16 +15,32 @@ export default function Tracker() {
   const fetchEntries = useCallback(async () => {
     if (!user) { setLoading(false); return }
     try {
-      const { data } = await supabase
+      const { data: raw, error } = await supabase
         .from('time_entries')
-        .select(`*, project:projects(id, name, color), time_entry_tags(tag:tags(id, name))`)
+        .select('*, project:projects(id, name, color)')
         .eq('user_id', user.id)
         .eq('is_running', false)
         .order('start_time', { ascending: false })
         .limit(300)
-      setEntries(data ?? [])
+      if (error) throw error
+      const base = raw ?? []
+      if (base.length > 0) {
+        const { data: tagRows } = await supabase
+          .from('time_entry_tags')
+          .select('time_entry_id, tag:tags(id, name)')
+          .in('time_entry_id', base.map(e => e.id))
+        const byEntry = {}
+        for (const r of tagRows ?? []) {
+          if (!byEntry[r.time_entry_id]) byEntry[r.time_entry_id] = []
+          byEntry[r.time_entry_id].push({ tag: r.tag })
+        }
+        setEntries(base.map(e => ({ ...e, time_entry_tags: byEntry[e.id] ?? [] })))
+      } else {
+        setEntries([])
+      }
     } catch (err) {
       console.error('[Tracker] fetchEntries error:', err)
+      setEntries([])
     } finally {
       setLoading(false)
     }
