@@ -1,4 +1,4 @@
-import { useState, useEffect } from 'react'
+import { useState, useEffect, useRef } from 'react'
 import { X } from 'lucide-react'
 import { supabase } from '../lib/supabase'
 import { useAuth } from '../contexts/AuthContext'
@@ -18,6 +18,9 @@ export default function ManualEntryModal({ entry, onClose, onSaved }) {
   const [tags, setTags]               = useState(allTags)
   const [newTag, setNewTag]           = useState('')
   const [saving, setSaving]           = useState(false)
+  // Time inputs only have minute precision; keep the original seconds so
+  // short entries (e.g. a 6-second timer run) survive editing.
+  const seconds = useRef({ start: 0, end: 0 })
 
   useEffect(() => { setTags(allTags) }, [allTags])
 
@@ -26,9 +29,15 @@ export default function ManualEntryModal({ entry, onClose, onSaved }) {
       setDescription(entry.description ?? '')
       setProjectId(entry.project_id ?? '')
       setTagIds(entry.time_entry_tags?.map(t => t.tag.id) ?? [])
-      setDate(entry.start_time.slice(0, 10))
-      setStartTime(entry.start_time.slice(11, 16))
-      setEndTime(entry.end_time?.slice(11, 16) ?? '10:00')
+      // Parse as Date so it renders in the USER'S timezone, not UTC.
+      const start = new Date(entry.start_time)
+      const end   = entry.end_time ? new Date(entry.end_time) : null
+      setDate(format(start, 'yyyy-MM-dd'))
+      setStartTime(format(start, 'HH:mm'))
+      setEndTime(end ? format(end, 'HH:mm') : '10:00')
+      seconds.current = { start: start.getSeconds(), end: end ? end.getSeconds() : 0 }
+    } else {
+      seconds.current = { start: 0, end: 0 }
     }
   }, [entry])
 
@@ -49,9 +58,13 @@ export default function ManualEntryModal({ entry, onClose, onSaved }) {
   }
 
   async function handleSave() {
-    const startISO = new Date(`${date}T${startTime}:00`).toISOString()
-    const endISO   = new Date(`${date}T${endTime}:00`).toISOString()
-    const duration = Math.floor((new Date(endISO) - new Date(startISO)) / 1000)
+    const start = new Date(`${date}T${startTime}:00`)
+    start.setSeconds(seconds.current.start)
+    const end = new Date(`${date}T${endTime}:00`)
+    end.setSeconds(seconds.current.end)
+    const startISO = start.toISOString()
+    const endISO   = end.toISOString()
+    const duration = Math.floor((end - start) / 1000)
     if (duration <= 0) { toast.error('End time must be after start time'); return }
 
     setSaving(true)
