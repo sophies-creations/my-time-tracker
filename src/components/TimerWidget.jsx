@@ -1,14 +1,21 @@
 import { useState, useEffect, useRef } from 'react'
-import { Play, Square, DollarSign, Tag, ChevronDown } from 'lucide-react'
+import { Play, Square, DollarSign, Tag, ChevronDown, Plus } from 'lucide-react'
 import { supabase } from '../lib/supabase'
 import { useAuth } from '../contexts/AuthContext'
 import { useData } from '../contexts/DataContext'
 import { formatDuration } from '../utils/formatters'
 import toast from 'react-hot-toast'
 
+const PROJECT_COLORS = [
+  '#DA70D6', '#C44FBA', '#A33E98',
+  '#10B981', '#F59E0B', '#EF4444',
+  '#3B82F6', '#EC4899', '#06B6D4',
+  '#84CC16', '#F97316', '#6366F1',
+]
+
 export default function TimerWidget() {
   const { user } = useAuth()
-  const { projects, tags } = useData()
+  const { projects, tags, refreshProjects } = useData()
   const [running, setRunning]         = useState(null)
   const [elapsed, setElapsed]         = useState(0)
   const [description, setDescription] = useState('')
@@ -17,6 +24,8 @@ export default function TimerWidget() {
   const [billable, setBillable]       = useState(false)
   const [projectOpen, setProjectOpen] = useState(false)
   const [tagsOpen, setTagsOpen]       = useState(false)
+  const [newProjectName, setNewProjectName] = useState('')
+  const [creatingProject, setCreatingProject] = useState(false)
 
   const projectRef = useRef(null)
   const tagsRef    = useRef(null)
@@ -135,6 +144,29 @@ export default function TimerWidget() {
     window.dispatchEvent(new CustomEvent('timeentry:saved'))
   }
 
+  async function createProject() {
+    const name = newProjectName.trim()
+    if (!name || creatingProject) return
+    setCreatingProject(true)
+    const color = PROJECT_COLORS[Math.floor(Math.random() * PROJECT_COLORS.length)]
+    const { data, error } = await supabase
+      .from('projects')
+      .insert({ name, color })
+      .select()
+      .single()
+    setCreatingProject(false)
+    if (error) {
+      console.error('[Timer] create project failed:', error)
+      toast.error(`Could not create project: ${error.message}`)
+      return
+    }
+    await refreshProjects()
+    setProjectId(data.id)
+    setNewProjectName('')
+    setProjectOpen(false)
+    toast.success(`Project "${name}" created`)
+  }
+
   function toggleTag(id) {
     setTagIds(prev => prev.includes(id) ? prev.filter(t => t !== id) : [...prev, id])
   }
@@ -190,6 +222,29 @@ export default function TimerWidget() {
               </button>
             ))}
             {!projects.length && <p className="px-3 py-2 text-xs text-slate-400">No projects yet</p>}
+            <div className="border-t border-slate-100 mt-1 pt-1 px-2 pb-1">
+              <div className="flex items-center gap-1">
+                <input
+                  type="text"
+                  value={newProjectName}
+                  onChange={e => setNewProjectName(e.target.value)}
+                  onKeyDown={e => {
+                    if (e.key === 'Enter') { e.preventDefault(); createProject() }
+                    if (e.key === 'Escape') { setNewProjectName(''); setProjectOpen(false) }
+                  }}
+                  placeholder="New project…"
+                  className="flex-1 text-sm px-2 py-1.5 rounded-lg border border-slate-200 outline-none focus:border-orchid-400 placeholder-slate-400 min-w-0"
+                />
+                <button
+                  onClick={createProject}
+                  disabled={!newProjectName.trim() || creatingProject}
+                  title="Create project"
+                  className="flex-shrink-0 w-7 h-7 rounded-lg flex items-center justify-center bg-orchid-600 text-white hover:bg-orchid-700 disabled:opacity-40 disabled:cursor-not-allowed"
+                >
+                  <Plus size={14} />
+                </button>
+              </div>
+            </div>
           </div>
         )}
       </div>
