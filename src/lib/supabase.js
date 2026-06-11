@@ -7,6 +7,6 @@ if (!supabaseUrl || !supabaseAnonKey) {
   throw new Error('Missing Supabase env vars — copy .env.example to .env and fill in your values.')
 }
 
-export const supabase = createClient(supabaseUrl, supabaseAnonKey, {
-  db: { timeout: 10_000 },
-})
+// Note: `db: { timeout }` is not a real supabase-js option and was silently
+// ignored — removed to avoid confusion.
+export const supabase = createClient(supabaseUrl, supabaseAnonKey)

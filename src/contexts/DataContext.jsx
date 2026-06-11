@@ -32,7 +32,7 @@ export function DataProvider({ children }) {
         .order('name')
         .then(({ data }) => setClients(data ?? []))
     }
-  }, [user, isClient])
+  }, [user?.id, isClient])
 
   const refreshProjects = () =>
     supabase.from('projects').select('id, name, color').eq('archived', false).order('name')

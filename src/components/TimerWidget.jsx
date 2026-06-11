@@ -58,6 +58,25 @@ export default function TimerWidget() {
   }
 
   async function handleStart() {
+    // Guard: if a running entry already exists (e.g. from another tab or a
+    // previous failed stop), resume it instead of inserting a duplicate.
+    const { data: existing } = await supabase
+      .from('time_entries')
+      .select('*, time_entry_tags(tag_id)')
+      .eq('user_id', user.id)
+      .eq('is_running', true)
+      .maybeSingle()
+    if (existing) {
+      setRunning(existing)
+      setDescription(existing.description ?? '')
+      setProjectId(existing.project_id ?? '')
+      setBillable(existing.billable ?? false)
+      setTagIds(existing.time_entry_tags?.map(t => t.tag_id) ?? [])
+      setElapsed(Math.floor((Date.now() - new Date(existing.start_time).getTime()) / 1000))
+      toast('Resumed your running timer')
+      return
+    }
+
     const { data, error } = await supabase
       .from('time_entries')
       .insert({
@@ -70,7 +89,11 @@ export default function TimerWidget() {
       })
       .select()
       .single()
-    if (error) { toast.error('Could not start timer'); return }
+    if (error) {
+      console.error('[Timer] start failed:', error)
+      toast.error(`Could not start timer: ${error.message}${error.code ? ` (${error.code})` : ''}`)
+      return
+    }
     if (tagIds.length > 0) {
       await supabase.from('time_entry_tags').insert(
         tagIds.map(tag_id => ({ time_entry_id: data.id, tag_id }))
@@ -95,7 +118,11 @@ export default function TimerWidget() {
         billable,
       })
       .eq('id', running.id)
-    if (error) { toast.error('Could not stop timer'); return }
+    if (error) {
+      console.error('[Timer] stop failed:', error)
+      toast.error(`Could not stop timer: ${error.message}${error.code ? ` (${error.code})` : ''}`)
+      return
+    }
     await supabase.from('time_entry_tags').delete().eq('time_entry_id', running.id)
     if (tagIds.length > 0) {
       await supabase.from('time_entry_tags').insert(
