@@ -8,30 +8,22 @@ import { format } from 'date-fns'
 
 export default function ManualEntryModal({ entry, onClose, onSaved }) {
   const { user, isAdmin } = useAuth()
-  const { projects, tags: allTags, refreshTags } = useData()
-  // Only Admins may change the project on a stopped entry that already exists
+  const { projects } = useData()
   const projectLocked = !!entry && !isAdmin
   const [description, setDescription] = useState('')
   const [projectId, setProjectId]     = useState('')
-  const [tagIds, setTagIds]           = useState([])
   const [date, setDate]               = useState(format(new Date(), 'yyyy-MM-dd'))
   const [startTime, setStartTime]     = useState('09:00')
   const [endTime, setEndTime]         = useState('10:00')
-  const [tags, setTags]               = useState(allTags)
-  const [newTag, setNewTag]           = useState('')
   const [saving, setSaving]           = useState(false)
   // Time inputs only have minute precision; keep the original seconds so
   // short entries (e.g. a 6-second timer run) survive editing.
   const seconds = useRef({ start: 0, end: 0 })
 
-  useEffect(() => { setTags(allTags) }, [allTags])
-
   useEffect(() => {
     if (entry) {
       setDescription(entry.description ?? '')
       setProjectId(entry.project_id ?? '')
-      setTagIds(entry.time_entry_tags?.map(t => t.tag.id) ?? [])
-      // Parse as Date so it renders in the USER'S timezone, not UTC.
       const start = new Date(entry.start_time)
       const end   = entry.end_time ? new Date(entry.end_time) : null
       setDate(format(start, 'yyyy-MM-dd'))
@@ -42,22 +34,6 @@ export default function ManualEntryModal({ entry, onClose, onSaved }) {
       seconds.current = { start: 0, end: 0 }
     }
   }, [entry])
-
-  async function createTag() {
-    const name = newTag.trim()
-    if (!name) return
-    const { data, error } = await supabase
-      .from('tags').insert({ name }).select().single()
-    if (error) { toast.error('Tag already exists'); return }
-    setTags(prev => [...prev, data].sort((a, b) => a.name.localeCompare(b.name)))
-    setTagIds(prev => [...prev, data.id])
-    setNewTag('')
-    refreshTags()
-  }
-
-  function toggleTag(id) {
-    setTagIds(prev => prev.includes(id) ? prev.filter(t => t !== id) : [...prev, id])
-  }
 
   async function handleSave() {
     const start = new Date(`${date}T${startTime}:00`)
@@ -71,7 +47,6 @@ export default function ManualEntryModal({ entry, onClose, onSaved }) {
 
     setSaving(true)
     try {
-      let entryId = entry?.id
       if (entry) {
         const { error } = await supabase.from('time_entries').update({
           description: description.trim(), project_id: projectId || null,
@@ -79,19 +54,12 @@ export default function ManualEntryModal({ entry, onClose, onSaved }) {
         }).eq('id', entry.id)
         if (error) throw error
       } else {
-        const { data, error } = await supabase.from('time_entries').insert({
+        const { error } = await supabase.from('time_entries').insert({
           user_id: user.id, description: description.trim(),
           project_id: projectId || null, start_time: startISO,
           end_time: endISO, duration, is_running: false,
-        }).select().single()
+        })
         if (error) throw error
-        entryId = data.id
-      }
-      await supabase.from('time_entry_tags').delete().eq('time_entry_id', entryId)
-      if (tagIds.length) {
-        await supabase.from('time_entry_tags').insert(
-          tagIds.map(tag_id => ({ time_entry_id: entryId, tag_id }))
-        )
       }
       toast.success(entry ? 'Entry updated' : 'Entry added')
       onSaved()
@@ -158,33 +126,6 @@ export default function ManualEntryModal({ entry, onClose, onSaved }) {
                 />
               </div>
             ))}
-          </div>
-
-          <div>
-            <label className="block text-xs font-medium text-slate-600 mb-2">Tags</label>
-            <div className="flex flex-wrap gap-1.5 mb-2 min-h-6">
-              {tags.map(tag => (
-                <button
-                  key={tag.id} type="button" onClick={() => toggleTag(tag.id)}
-                  className={`text-xs px-2.5 py-1 rounded-full border transition-colors ${tagIds.includes(tag.id) ? 'bg-orchid-600 text-white border-orchid-600' : 'bg-white text-slate-600 border-slate-200 hover:border-orchid-400'}`}
-                >
-                  {tag.name}
-                </button>
-              ))}
-            </div>
-            <div className="flex gap-2">
-              <input
-                type="text" value={newTag} onChange={e => setNewTag(e.target.value)}
-                onKeyDown={e => e.key === 'Enter' && (e.preventDefault(), createTag())}
-                placeholder="New tag…"
-                className="flex-1 border border-slate-200 rounded-lg px-3 py-1.5 text-xs outline-none focus:ring-2 focus:ring-orchid-500"
-              />
-              <button type="button" onClick={createTag}
-                className="text-xs px-3 py-1.5 bg-slate-100 hover:bg-slate-200 text-slate-700 rounded-lg transition-colors"
-              >
-                Add
-              </button>
-            </div>
           </div>
         </div>
 

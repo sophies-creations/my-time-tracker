@@ -11,7 +11,6 @@ export async function exportToExcel(entries, filename = 'TimeReport') {
     Description: entry.description || '',
     Project: entry.project?.name ?? '',
     User: entry.user?.full_name || entry.user?.email || '',
-    Tags: entry.time_entry_tags?.map(t => t.tag.name).join(', ') ?? '',
   }))
 
   const ws = XLSX.utils.json_to_sheet(rows.length ? rows : [{}])

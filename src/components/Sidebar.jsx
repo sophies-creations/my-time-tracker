@@ -1,7 +1,7 @@
 import { NavLink } from 'react-router-dom'
 import {
   Clock, LayoutDashboard, BarChart2, CalendarDays,
-  FolderOpen, Users, Building2, Tag,
+  FolderOpen, Users, Building2,
 } from 'lucide-react'
 import { useAuth } from '../contexts/AuthContext'
 
@@ -13,7 +13,6 @@ const NAV = [
   { to: '/projects',  Icon: FolderOpen,        label: 'Projects' },
   { to: '/team',      Icon: Users,             label: 'Team',      managerOnly: true },
   { to: '/clients',   Icon: Building2,         label: 'Clients',   adminOnly: true },
-  { to: '/tags',      Icon: Tag,               label: 'Tags' },
 ]
 
 export default function Sidebar() {

@@ -14,7 +14,6 @@ const Reports       = lazy(() => import('./pages/Reports'))
 const Calendar      = lazy(() => import('./pages/Calendar'))
 const Projects      = lazy(() => import('./pages/Projects'))
 const Clients       = lazy(() => import('./pages/Clients'))
-const Tags          = lazy(() => import('./pages/Tags'))
 const Team          = lazy(() => import('./pages/Team'))
 const ClientPortal  = lazy(() => import('./pages/ClientPortal'))
 
@@ -52,7 +51,6 @@ export default function App() {
                   <Route path="/calendar"  element={<Calendar />} />
                   <Route path="/projects"  element={<Projects />} />
                   <Route path="/clients"   element={<Clients />} />
-                  <Route path="/tags"      element={<Tags />} />
                   <Route path="/team"      element={<Team />} />
                 </Route>
               </Route>

@@ -7,14 +7,12 @@ const DataContext = createContext(null)
 export function DataProvider({ children }) {
   const { user, isClient } = useAuth()
   const [projects, setProjects] = useState([])
-  const [tags, setTags]         = useState([])
   const [clients, setClients]   = useState([])
   const [favoriteIds, setFavoriteIds] = useState(new Set())
 
   useEffect(() => {
     if (!user) {
       setProjects([])
-      setTags([])
       setClients([])
       setFavoriteIds(new Set())
       return
@@ -22,11 +20,9 @@ export function DataProvider({ children }) {
 
     Promise.all([
       supabase.from('projects').select('id, name, color').eq('archived', false).order('name'),
-      supabase.from('tags').select('id, name').order('name'),
       supabase.from('project_favorites').select('project_id').eq('user_id', user.id),
-    ]).then(([{ data: proj }, { data: t }, { data: favs }]) => {
+    ]).then(([{ data: proj }, { data: favs }]) => {
       setProjects(proj ?? [])
-      setTags(t ?? [])
       setFavoriteIds(new Set((favs ?? []).map(f => f.project_id)))
     })
 
@@ -42,10 +38,6 @@ export function DataProvider({ children }) {
     supabase.from('projects').select('id, name, color').eq('archived', false).order('name')
       .then(({ data }) => setProjects(data ?? []))
 
-  const refreshTags = () =>
-    supabase.from('tags').select('id, name').order('name')
-      .then(({ data }) => setTags(data ?? []))
-
   const refreshClients = () =>
     supabase.from('clients').select('id, name, email, profile_id, client_projects(project_id)').order('name')
       .then(({ data }) => setClients(data ?? []))
@@ -53,7 +45,6 @@ export function DataProvider({ children }) {
   async function toggleFavorite(projectId) {
     if (!user) return
     const isFav = favoriteIds.has(projectId)
-    // Optimistic update
     setFavoriteIds(prev => {
       const next = new Set(prev)
       if (isFav) next.delete(projectId); else next.add(projectId)
@@ -76,8 +67,8 @@ export function DataProvider({ children }) {
 
   return (
     <DataContext.Provider value={{
-      projects, tags, clients, favoriteIds,
-      refreshProjects, refreshTags, refreshClients, toggleFavorite,
+      projects, clients, favoriteIds,
+      refreshProjects, refreshClients, toggleFavorite,
     }}>
       {children}
     </DataContext.Provider>

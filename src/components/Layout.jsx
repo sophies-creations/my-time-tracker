@@ -1,9 +1,21 @@
+import { useEffect, useState } from 'react'
 import { Outlet } from 'react-router-dom'
 import Sidebar from './Sidebar'
 import TopBar from './TopBar'
 import TimerWidget from './TimerWidget'
+import ManualEntryModal from './ManualEntryModal'
 
 export default function Layout() {
+  const [modal, setModal] = useState({ open: false, entry: null })
+
+  useEffect(() => {
+    function onOpen(e) {
+      setModal({ open: true, entry: e.detail?.entry ?? null })
+    }
+    window.addEventListener('manual-entry:open', onOpen)
+    return () => window.removeEventListener('manual-entry:open', onOpen)
+  }, [])
+
   return (
     <div className="flex h-screen bg-slate-50 overflow-hidden">
       <Sidebar />
@@ -14,6 +26,17 @@ export default function Layout() {
           <Outlet />
         </main>
       </div>
+
+      {modal.open && (
+        <ManualEntryModal
+          entry={modal.entry}
+          onClose={() => setModal({ open: false, entry: null })}
+          onSaved={() => {
+            setModal({ open: false, entry: null })
+            window.dispatchEvent(new CustomEvent('timeentry:saved'))
+          }}
+        />
+      )}
     </div>
   )
 }

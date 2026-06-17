@@ -10,7 +10,6 @@ export default function TimeEntryList({ entries, onEdit, onRefresh }) {
   const grouped = useMemo(() => groupByDate(entries), [entries])
 
   const weekTotal = useMemo(() => {
-    // Sum entries whose start_time falls in the current ISO week (Mon..Sun)
     const now = new Date()
     const day = (now.getDay() + 6) % 7 // 0 = Monday
     const start = new Date(now); start.setHours(0, 0, 0, 0); start.setDate(start.getDate() - day)
@@ -52,7 +51,7 @@ export default function TimeEntryList({ entries, onEdit, onRefresh }) {
         <div className="text-center py-20 text-slate-400">
           <Clock className="mx-auto mb-3 opacity-30" size={40} />
           <p className="text-base font-medium">No time entries yet</p>
-          <p className="text-sm mt-1">Start the timer above or add time manually</p>
+          <p className="text-sm mt-1">Start the timer above to log time</p>
         </div>
       </div>
     )
@@ -77,24 +76,17 @@ export default function TimeEntryList({ entries, onEdit, onRefresh }) {
               <div className="bg-white rounded-xl border border-slate-200 divide-y divide-slate-100">
                 {dayEntries.map(entry => (
                   <div key={entry.id} className="flex items-center gap-3 px-4 py-3 group">
-                    <div
-                      className="w-2 h-2 rounded-full flex-shrink-0"
-                      style={{ backgroundColor: entry.project?.color ?? '#cbd5e1' }}
-                    />
                     <div className="flex-1 min-w-0">
-                      <p className="text-sm font-medium text-slate-800 truncate">
+                      <p className="text-sm font-medium text-slate-800 truncate flex items-center gap-2">
+                        <span
+                          className="w-2 h-2 rounded-full flex-shrink-0"
+                          style={{ backgroundColor: entry.project?.color ?? '#cbd5e1' }}
+                        />
+                        {entry.project?.name ?? <span className="text-slate-400">No project</span>}
+                      </p>
+                      <p className="text-xs text-slate-500 truncate mt-0.5 pl-4">
                         {entry.description || <span className="text-slate-400 italic">No description</span>}
                       </p>
-                      <div className="flex items-center gap-2 mt-0.5 flex-wrap">
-                        {entry.project && (
-                          <span className="text-xs text-slate-500">{entry.project.name}</span>
-                        )}
-                        {entry.time_entry_tags?.map(({ tag }) => (
-                          <span key={tag.id} className="text-xs bg-orchid-50 text-orchid-700 px-1.5 py-0.5 rounded">
-                            {tag.name}
-                          </span>
-                        ))}
-                      </div>
                     </div>
                     <span className="text-xs text-slate-400 hidden sm:block flex-shrink-0 font-mono tabular-nums">
                       {formatTime(entry.start_time)}–{entry.end_time ? formatTime(entry.end_time) : '...'}

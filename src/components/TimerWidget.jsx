@@ -1,5 +1,5 @@
 import { useState, useEffect, useRef, useMemo } from 'react'
-import { Play, Square, DollarSign, Tag, ChevronDown, Plus, Star } from 'lucide-react'
+import { Play, Square, DollarSign, ChevronDown, Plus, Star } from 'lucide-react'
 import { supabase } from '../lib/supabase'
 import { useAuth } from '../contexts/AuthContext'
 import { useData } from '../contexts/DataContext'
@@ -15,27 +15,23 @@ const PROJECT_COLORS = [
 
 export default function TimerWidget() {
   const { user } = useAuth()
-  const { projects, tags, favoriteIds, toggleFavorite, refreshProjects } = useData()
+  const { projects, favoriteIds, toggleFavorite, refreshProjects } = useData()
   const [running, setRunning]         = useState(null)
   const [elapsed, setElapsed]         = useState(0)
   const [description, setDescription] = useState('')
   const [projectId, setProjectId]     = useState('')
-  const [tagIds, setTagIds]           = useState([])
   const [billable, setBillable]       = useState(false)
   const [projectOpen, setProjectOpen] = useState(false)
-  const [tagsOpen, setTagsOpen]       = useState(false)
   const [newProjectName, setNewProjectName] = useState('')
   const [creatingProject, setCreatingProject] = useState(false)
 
   const projectRef = useRef(null)
-  const tagsRef    = useRef(null)
 
   useEffect(() => { if (user) fetchRunningEntry() }, [user])
 
   useEffect(() => {
     function onDown(e) {
       if (projectRef.current && !projectRef.current.contains(e.target)) setProjectOpen(false)
-      if (tagsRef.current    && !tagsRef.current.contains(e.target))    setTagsOpen(false)
     }
     document.addEventListener('mousedown', onDown)
     return () => document.removeEventListener('mousedown', onDown)
@@ -49,13 +45,11 @@ export default function TimerWidget() {
     return () => clearInterval(id)
   }, [running])
 
-  // Pre-fill the description+project when a one-click resume fires
   useEffect(() => {
     function onResume(e) {
       const { description: d, projectId: pid } = e.detail ?? {}
       setDescription(d ?? '')
       setProjectId(pid ?? '')
-      // Auto-start once running entry isn't blocking
       if (!running && pid) {
         setTimeout(() => handleStartWith(d ?? '', pid), 0)
       }
@@ -67,7 +61,7 @@ export default function TimerWidget() {
   async function fetchRunningEntry() {
     const { data } = await supabase
       .from('time_entries')
-      .select('*, time_entry_tags(tag_id)')
+      .select('*')
       .eq('user_id', user.id)
       .eq('is_running', true)
       .maybeSingle()
@@ -76,7 +70,6 @@ export default function TimerWidget() {
       setDescription(data.description ?? '')
       setProjectId(data.project_id ?? '')
       setBillable(data.billable ?? false)
-      setTagIds(data.time_entry_tags?.map(t => t.tag_id) ?? [])
       setElapsed(Math.floor((Date.now() - new Date(data.start_time).getTime()) / 1000))
     }
   }
@@ -89,7 +82,7 @@ export default function TimerWidget() {
     }
     const { data: existing } = await supabase
       .from('time_entries')
-      .select('*, time_entry_tags(tag_id)')
+      .select('*')
       .eq('user_id', user.id)
       .eq('is_running', true)
       .maybeSingle()
@@ -98,7 +91,6 @@ export default function TimerWidget() {
       setDescription(existing.description ?? '')
       setProjectId(existing.project_id ?? '')
       setBillable(existing.billable ?? false)
-      setTagIds(existing.time_entry_tags?.map(t => t.tag_id) ?? [])
       setElapsed(Math.floor((Date.now() - new Date(existing.start_time).getTime()) / 1000))
       toast('Resumed your running timer')
       return
@@ -120,11 +112,6 @@ export default function TimerWidget() {
       console.error('[Timer] start failed:', error)
       toast.error(`Could not start timer: ${error.message}${error.code ? ` (${error.code})` : ''}`)
       return
-    }
-    if (tagIds.length > 0) {
-      await supabase.from('time_entry_tags').insert(
-        tagIds.map(tag_id => ({ time_entry_id: data.id, tag_id }))
-      )
     }
     setRunning(data)
     setElapsed(0)
@@ -154,14 +141,8 @@ export default function TimerWidget() {
       toast.error(`Could not stop timer: ${error.message}${error.code ? ` (${error.code})` : ''}`)
       return
     }
-    await supabase.from('time_entry_tags').delete().eq('time_entry_id', running.id)
-    if (tagIds.length > 0) {
-      await supabase.from('time_entry_tags').insert(
-        tagIds.map(tag_id => ({ time_entry_id: running.id, tag_id }))
-      )
-    }
     setRunning(null); setElapsed(0); setDescription('')
-    setProjectId(''); setBillable(false); setTagIds([])
+    setProjectId(''); setBillable(false)
     toast.success('Entry saved')
     window.dispatchEvent(new CustomEvent('timeentry:saved'))
   }
@@ -189,12 +170,7 @@ export default function TimerWidget() {
     toast.success(`Project "${name}" created`)
   }
 
-  function toggleTag(id) {
-    setTagIds(prev => prev.includes(id) ? prev.filter(t => t !== id) : [...prev, id])
-  }
-
   const selectedProject = projects.find(p => p.id === projectId)
-  const selectedTags    = tags.filter(t => tagIds.includes(t.id))
 
   const { favorites, others } = useMemo(() => {
     const favs = [], oth = []
@@ -225,7 +201,7 @@ export default function TimerWidget() {
       {/* Project picker */}
       <div className="relative flex-shrink-0" ref={projectRef}>
         <button
-          onClick={() => { setProjectOpen(v => !v); setTagsOpen(false) }}
+          onClick={() => setProjectOpen(v => !v)}
           className={`flex items-center gap-1.5 px-3 py-1.5 rounded-lg text-sm transition-colors hover:bg-slate-50 ${selectedProject ? 'text-slate-800' : 'text-orchid-600'}`}
         >
           {selectedProject
@@ -282,41 +258,6 @@ export default function TimerWidget() {
                 </button>
               </div>
             </div>
-          </div>
-        )}
-      </div>
-
-      {/* Tags picker */}
-      <div className="relative flex-shrink-0" ref={tagsRef}>
-        <button
-          onClick={() => { setTagsOpen(v => !v); setProjectOpen(false) }}
-          className={`flex items-center gap-1.5 px-3 py-1.5 rounded-lg text-sm transition-colors hover:bg-slate-50 ${tagIds.length ? 'text-slate-800' : 'text-slate-400'}`}
-        >
-          <Tag size={13} className="flex-shrink-0" />
-          <span className="max-w-[7rem] truncate">
-            {selectedTags.length ? selectedTags.map(t => t.name).join(', ') : 'Tags'}
-          </span>
-          <ChevronDown size={12} className="text-slate-400 flex-shrink-0" />
-        </button>
-        {tagsOpen && (
-          <div className="absolute top-full left-0 mt-1 bg-white border border-slate-200 rounded-xl shadow-lg z-50 min-w-[11rem] max-h-64 overflow-y-auto py-1">
-            {tags.map(t => (
-              <button
-                key={t.id}
-                onClick={() => toggleTag(t.id)}
-                className="w-full flex items-center gap-2.5 px-3 py-2 text-sm text-slate-700 hover:bg-slate-50 text-left"
-              >
-                <span className={`w-3.5 h-3.5 rounded border-2 flex items-center justify-center flex-shrink-0 transition-colors ${tagIds.includes(t.id) ? 'bg-orchid-600 border-orchid-600' : 'border-slate-300'}`}>
-                  {tagIds.includes(t.id) && (
-                    <svg width="8" height="8" viewBox="0 0 8 8" fill="none">
-                      <path d="M1 4l2 2 4-4" stroke="white" strokeWidth="1.5" strokeLinecap="round" strokeLinejoin="round"/>
-                    </svg>
-                  )}
-                </span>
-                {t.name}
-              </button>
-            ))}
-            {!tags.length && <p className="px-3 py-2 text-xs text-slate-400">No tags yet</p>}
           </div>
         )}
       </div>

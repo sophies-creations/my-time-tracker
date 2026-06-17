@@ -1,12 +1,14 @@
 import { useState, useEffect, useMemo } from 'react'
 import {
   format, startOfWeek, endOfWeek, startOfMonth, endOfMonth,
-  addWeeks, addMonths, eachDayOfInterval, isSameDay, formatDistanceToNowStrict,
+  startOfDay, endOfDay, eachDayOfInterval, isSameDay, formatDistanceToNowStrict,
 } from 'date-fns'
-import { ChevronLeft, ChevronRight } from 'lucide-react'
+import { Square } from 'lucide-react'
 import { supabase } from '../lib/supabase'
 import { useAuth } from '../contexts/AuthContext'
 import { formatDuration } from '../utils/formatters'
+import DateRangePicker from '../components/DateRangePicker'
+import toast from 'react-hot-toast'
 
 const WEEK_OPT  = { weekStartsOn: 1 }
 const FALLBACK  = ['#DA70D6','#C44FBA','#3B82F6','#10B981','#F59E0B','#EF4444','#6366F1','#EC4899']
@@ -83,27 +85,18 @@ function MemberBar({ segments, total, max }) {
 }
 
 export default function Dashboard() {
-  const { user, isManager } = useAuth()
+  const { user, isManager, isAdmin } = useAuth()
   const [scope, setScope]   = useState('me')
-  const [period, setPeriod] = useState('week')
-  const [offset, setOffset] = useState(0)
+  const initialFrom = startOfWeek(new Date(), WEEK_OPT)
+  const initialTo   = endOfWeek(new Date(), WEEK_OPT)
+  const [range, setRange] = useState({ from: initialFrom, to: initialTo })
   const [entries, setEntries] = useState([])
   const [members, setMembers] = useState([])
   const [latest, setLatest]   = useState({})
   const [loading, setLoading] = useState(true)
   const [, setTick] = useState(0)
 
-  const now = new Date()
-  const range = useMemo(() => {
-    if (period === 'week') {
-      const base = addWeeks(now, offset)
-      return { start: startOfWeek(base, WEEK_OPT), end: endOfWeek(base, WEEK_OPT) }
-    }
-    const base = addMonths(now, offset)
-    return { start: startOfMonth(base), end: endOfMonth(base) }
-  }, [period, offset]) // eslint-disable-line react-hooks/exhaustive-deps
-
-  useEffect(() => { fetchAll() }, [scope, period, offset]) // eslint-disable-line react-hooks/exhaustive-deps
+  useEffect(() => { fetchAll() }, [scope, range]) // eslint-disable-line react-hooks/exhaustive-deps
 
   // live ticking for running timers in team view
   const anyRunning = Object.values(latest).some(e => e?.is_running)
@@ -115,14 +108,14 @@ export default function Dashboard() {
 
   async function fetchAll() {
     setLoading(true)
-    const startISO = range.start.toISOString()
-    const endISO   = new Date(range.end.getTime() + 24 * 3600 * 1000).toISOString()
+    const startISO = startOfDay(range.from).toISOString()
+    const endISO   = endOfDay(range.to ?? range.from).toISOString()
 
     let q = supabase
       .from('time_entries')
       .select('id, duration, start_time, is_running, description, user_id, project:projects(id, name, color, client:clients(id, name))')
       .gte('start_time', startISO)
-      .lt('start_time', endISO)
+      .lte('start_time', endISO)
     if (scope === 'me') q = q.eq('user_id', user.id)
 
     const jobs = [q]
@@ -144,6 +137,28 @@ export default function Dashboard() {
       setLatest(byUser)
     }
     setLoading(false)
+  }
+
+  async function stopOtherUserTimer(entry, memberName) {
+    if (!isAdmin) return
+    if (!confirm(`Stop ${memberName}'s running timer?`)) return
+    const endTime  = new Date()
+    const duration = Math.floor((endTime - new Date(entry.start_time)) / 1000)
+    const { error } = await supabase
+      .from('time_entries')
+      .update({
+        end_time:   endTime.toISOString(),
+        duration,
+        is_running: false,
+      })
+      .eq('id', entry.id)
+    if (error) {
+      console.error('[Dashboard] stop other timer failed:', error)
+      toast.error(error.message || 'Could not stop the timer')
+      return
+    }
+    toast.success(`Stopped ${memberName}'s timer`)
+    fetchAll()
   }
 
   const finished  = entries.filter(e => !e.is_running)
@@ -168,7 +183,10 @@ export default function Dashboard() {
     }, {})
   ).sort((a, b) => b.seconds - a.seconds), [entries]) // eslint-disable-line react-hooks/exhaustive-deps
 
-  const days = useMemo(() => eachDayOfInterval(range), [range])
+  const days = useMemo(
+    () => eachDayOfInterval({ start: range.from, end: range.to ?? range.from }),
+    [range]
+  )
   const perDay = useMemo(() => days.map(day => {
     const dayEntries = finished.filter(e => isSameDay(new Date(e.start_time), day))
     const segs = Object.values(dayEntries.reduce((acc, e) => {
@@ -217,9 +235,10 @@ export default function Dashboard() {
   }, [scope, members, entries, latest]) // eslint-disable-line react-hooks/exhaustive-deps
   const maxMember = Math.max(...teamRows.map(r => r.total), 1)
 
-  const rangeLabel = period === 'week'
-    ? `${format(range.start, 'MMM d')} – ${format(range.end, 'MMM d')}`
-    : format(range.start, 'MMMM yyyy')
+  const sameDay      = isSameDay(range.from, range.to ?? range.from)
+  const rangeLabel   = sameDay
+    ? format(range.from, 'MMM d')
+    : `${format(range.from, 'MMM d')} – ${format(range.to ?? range.from, 'MMM d')}`
 
   return (
     <div>
@@ -235,19 +254,12 @@ export default function Dashboard() {
               ))}
             </div>
           )}
-          <div className="flex gap-1 bg-slate-100 rounded-xl p-1">
-            {['week', 'month'].map(p => (
-              <button key={p} onClick={() => { setPeriod(p); setOffset(0) }}
-                className={`px-3 py-1.5 rounded-lg text-sm font-medium capitalize transition-colors ${period === p ? 'bg-white text-slate-800 shadow-sm' : 'text-slate-500 hover:text-slate-700'}`}
-              >{p}</button>
-            ))}
-          </div>
-          <div className="flex items-center gap-1 bg-white border border-slate-200 rounded-xl px-2 py-1">
-            <button onClick={() => setOffset(o => o - 1)} className="p-1 text-slate-500 hover:text-slate-800"><ChevronLeft size={16} /></button>
-            <span className="text-sm text-slate-600 min-w-[7.5rem] text-center">{offset === 0 ? `This ${period}` : rangeLabel}</span>
-            <button onClick={() => setOffset(o => Math.min(o + 1, 0))} disabled={offset === 0}
-              className="p-1 text-slate-500 hover:text-slate-800 disabled:opacity-30"><ChevronRight size={16} /></button>
-          </div>
+          <DateRangePicker
+            from={range.from}
+            to={range.to}
+            onChange={setRange}
+            align="right"
+          />
         </div>
       </div>
 
@@ -268,26 +280,41 @@ export default function Dashboard() {
             const last = row.last
             const running = last?.is_running
             const elapsed = running ? Math.floor((Date.now() - new Date(last.start_time)) / 1000) : null
+            const memberName = row.full_name || row.email
             return (
               <div key={row.id} className="px-5 py-3.5 border-b border-slate-50 grid grid-cols-12 gap-3 items-center hover:bg-slate-50/50">
                 <div className="col-span-3 flex items-center gap-3 min-w-0">
                   <div className="w-8 h-8 rounded-full bg-orchid-100 text-orchid-700 flex items-center justify-center text-xs font-bold shrink-0 uppercase">
-                    {(row.full_name || row.email).slice(0, 2)}
+                    {(memberName).slice(0, 2)}
                   </div>
-                  <span className="text-sm font-medium text-slate-700 truncate">{row.full_name || row.email}</span>
+                  <span className="text-sm font-medium text-slate-700 truncate">{memberName}</span>
                 </div>
                 <div className="col-span-4 min-w-0">
                   {last ? (
                     <div className="flex items-center gap-3 min-w-0">
                       <div className="min-w-0">
-                        <p className="text-sm text-slate-600 truncate">{last.description || '(no description)'}</p>
-                        <p className="text-xs truncate" style={{ color: projOf(last).color }}>● {projOf(last).name}</p>
+                        <p className="text-sm truncate" style={{ color: projOf(last).color }}>● {projOf(last).name}</p>
+                        <p className="text-xs text-slate-500 truncate">
+                          {last.description || <span className="text-slate-400 italic">No description</span>}
+                        </p>
                       </div>
                       {running ? (
-                        <span className="ml-auto shrink-0 text-xs font-mono text-emerald-600 flex items-center gap-1.5">
-                          {formatDuration(elapsed)}
-                          <span className="w-2 h-2 rounded-full bg-emerald-500 animate-pulse" /> In progress
-                        </span>
+                        <div className="ml-auto shrink-0 flex items-center gap-2">
+                          <span className="text-xs font-mono text-emerald-600 flex items-center gap-1.5">
+                            {formatDuration(elapsed)}
+                            <span className="w-2 h-2 rounded-full bg-emerald-500 animate-pulse" /> In progress
+                          </span>
+                          {isAdmin && row.id !== user.id && (
+                            <button
+                              onClick={() => stopOtherUserTimer(last, memberName)}
+                              title={`Stop ${memberName}'s timer`}
+                              className="flex items-center gap-1 px-2 py-1 rounded-md text-xs font-semibold bg-red-500 hover:bg-red-600 text-white transition-colors"
+                            >
+                              <Square size={10} fill="currentColor" />
+                              Stop
+                            </button>
+                          )}
+                        </div>
                       ) : (
                         <span className="ml-auto shrink-0 text-xs text-slate-400">
                           {formatDistanceToNowStrict(new Date(last.start_time), { addSuffix: true })}
@@ -329,8 +356,8 @@ export default function Dashboard() {
                 {topActivities.map((a, i) => (
                   <div key={i} className="flex items-start justify-between gap-3 text-sm">
                     <div className="min-w-0">
-                      <p className="text-slate-700 truncate">{a.description}</p>
-                      <p className="text-xs truncate" style={{ color: a.project.color }}>● {a.project.name}</p>
+                      <p className="truncate" style={{ color: a.project.color }}>● {a.project.name}</p>
+                      <p className="text-xs text-slate-500 truncate">{a.description}</p>
                     </div>
                     <span className="font-mono text-xs text-slate-500 shrink-0 pt-0.5">{formatDuration(a.seconds)}</span>
                   </div>

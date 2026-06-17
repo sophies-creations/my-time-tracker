@@ -1,22 +1,18 @@
-import { useState, useEffect, useCallback } from 'react'
-import { format, startOfToday, startOfWeek, endOfWeek, startOfMonth, endOfMonth, addWeeks, subWeeks, eachDayOfInterval, parseISO } from 'date-fns'
+import { useState, useEffect, useCallback, useMemo } from 'react'
+import {
+  format, startOfWeek, endOfWeek, addWeeks, subWeeks,
+  eachDayOfInterval, startOfDay, endOfDay,
+} from 'date-fns'
 import { Download, ChevronLeft, ChevronRight } from 'lucide-react'
 import { supabase } from '../lib/supabase'
 import { useAuth } from '../contexts/AuthContext'
 import { useData } from '../contexts/DataContext'
 import { formatDuration } from '../utils/formatters'
 import { exportToExcel } from '../utils/export'
+import DateRangePicker from '../components/DateRangePicker'
 import toast from 'react-hot-toast'
 
 const WEEK_OPT = { weekStartsOn: 1 }
-
-const PRESETS = [
-  { label: 'Today',      range: () => ({ start: format(startOfToday(), 'yyyy-MM-dd'), end: format(new Date(), 'yyyy-MM-dd') }) },
-  { label: 'This week',  range: () => ({ start: format(startOfWeek(new Date(), WEEK_OPT), 'yyyy-MM-dd'), end: format(endOfWeek(new Date(), WEEK_OPT), 'yyyy-MM-dd') }) },
-  { label: 'This month', range: () => ({ start: format(startOfMonth(new Date()), 'yyyy-MM-dd'), end: format(endOfMonth(new Date()), 'yyyy-MM-dd') }) },
-  { label: 'Custom',     range: null },
-]
-
 const CHART_COLORS = ['#DA70D6','#C44FBA','#A33E98','#3B82F6','#10B981','#F59E0B','#EF4444','#6366F1']
 
 function BarChart({ data }) {
@@ -71,10 +67,10 @@ export default function Reports() {
   const { projects }  = useData()
   const [tab, setTab] = useState('summary')
 
-  const defaultRange = PRESETS[1].range()
-  const [preset, setPreset]         = useState('This week')
-  const [startDate, setStartDate]   = useState(defaultRange.start)
-  const [endDate, setEndDate]       = useState(defaultRange.end)
+  // Default to "This week" but as proper Date objects (local TZ)
+  const initialFrom = startOfWeek(new Date(), WEEK_OPT)
+  const initialTo   = endOfWeek(new Date(), WEEK_OPT)
+  const [range, setRange] = useState({ from: initialFrom, to: initialTo })
   const [filterProject, setFilterProject] = useState('')
   const [filterUser, setFilterUser] = useState('')
   const [entries, setEntries]       = useState([])
@@ -83,7 +79,36 @@ export default function Reports() {
   const [weekRef, setWeekRef]       = useState(new Date())
 
   useEffect(() => { if (isManager) fetchUsers() }, [isManager])
-  useEffect(() => { fetchEntries() }, [startDate, endDate, filterProject, filterUser])
+
+  const fetchEntries = useCallback(async () => {
+    if (!range?.from) return
+    setLoading(true)
+    try {
+      // Convert local-day boundaries to proper UTC ISO so a date like
+      // "2026-06-17" really means "the user's local 2026-06-17" in Postgres.
+      const startISO = startOfDay(range.from).toISOString()
+      const endISO   = endOfDay(range.to ?? range.from).toISOString()
+      let q = supabase
+        .from('time_entries')
+        .select(`*, project:projects(id, name, color), user:profiles(id, full_name, email)`)
+        .eq('is_running', false)
+        .gte('start_time', startISO)
+        .lte('start_time', endISO)
+        .order('start_time', { ascending: false })
+      if (filterProject) q = q.eq('project_id', filterProject)
+      if (filterUser)    q = q.eq('user_id', filterUser)
+      const { data, error } = await q
+      if (error) throw error
+      setEntries(data ?? [])
+    } catch (err) {
+      console.error('[Reports] fetchEntries error:', err)
+      setEntries([])
+    } finally {
+      setLoading(false)
+    }
+  }, [range, filterProject, filterUser])
+
+  useEffect(() => { fetchEntries() }, [fetchEntries])
 
   async function fetchUsers() {
     const { data } = await supabase.from('profiles')
@@ -91,54 +116,28 @@ export default function Reports() {
     setUsers(data ?? [])
   }
 
-  const fetchEntries = useCallback(async () => {
-    setLoading(true)
-    try {
-      let q = supabase
-        .from('time_entries')
-        .select(`*, project:projects(id, name, color), user:profiles(id, full_name, email), time_entry_tags(tag:tags(id, name))`)
-        .eq('is_running', false)
-        .gte('start_time', `${startDate}T00:00:00`)
-        .lte('start_time', `${endDate}T23:59:59`)
-        .order('start_time', { ascending: false })
-      if (filterProject) q = q.eq('project_id', filterProject)
-      if (filterUser)    q = q.eq('user_id', filterUser)
-      const { data } = await q
-      setEntries(data ?? [])
-    } catch (err) {
-      console.error('[Reports] fetchEntries error:', err)
-    } finally {
-      setLoading(false)
-    }
-  }, [startDate, endDate, filterProject, filterUser])
-
-  function applyPreset(label) {
-    setPreset(label)
-    const p = PRESETS.find(p => p.label === label)
-    if (p?.range) { const { start, end } = p.range(); setStartDate(start); setEndDate(end) }
-  }
-
   async function handleExport() {
     try {
-      await exportToExcel(entries, `TimeReport_${startDate}_to_${endDate}`)
+      const fromStr = format(range.from, 'yyyy-MM-dd')
+      const toStr   = format(range.to ?? range.from, 'yyyy-MM-dd')
+      await exportToExcel(entries, `TimeReport_${fromStr}_to_${toStr}`)
       toast.success('Excel file downloaded')
     } catch { toast.error('Export failed') }
   }
 
-  const totalSecs     = entries.reduce((s, e) => s + (e.duration ?? 0), 0)
+  const totalSecs      = entries.reduce((s, e) => s + (e.duration ?? 0), 0)
   const uniqueProjects = new Set(entries.filter(e => e.project_id).map(e => e.project_id)).size
 
-  // Summary chart data
-  const byProject = Object.values(
+  const byProject = useMemo(() => Object.values(
     entries.filter(e => e.project).reduce((acc, e) => {
       const id = e.project.id
       if (!acc[id]) acc[id] = { label: e.project.name, seconds: 0, color: e.project.color || CHART_COLORS[0] }
       acc[id].seconds += e.duration ?? 0
       return acc
     }, {})
-  ).sort((a, b) => b.seconds - a.seconds)
+  ).sort((a, b) => b.seconds - a.seconds), [entries])
 
-  const byUser = isManager ? Object.values(
+  const byUser = useMemo(() => isManager ? Object.values(
     entries.reduce((acc, e) => {
       if (!e.user) return acc
       const id = e.user.id
@@ -146,55 +145,39 @@ export default function Reports() {
       acc[id].seconds += e.duration ?? 0
       return acc
     }, {})
-  ).sort((a, b) => b.seconds - a.seconds) : []
+  ).sort((a, b) => b.seconds - a.seconds) : [], [entries, isManager])
 
-  // Weekly grid
   const weekStart = startOfWeek(weekRef, WEEK_OPT)
   const weekEnd   = endOfWeek(weekRef, WEEK_OPT)
   const weekDays  = eachDayOfInterval({ start: weekStart, end: weekEnd })
   const entriesByDay = entries.reduce((acc, e) => {
-    const day = e.start_time.slice(0, 10)
+    const day = format(new Date(e.start_time), 'yyyy-MM-dd')
     if (!acc[day]) acc[day] = []
     acc[day].push(e)
     return acc
   }, {})
 
   const filterBar = (
-    <div className="bg-white rounded-xl border border-slate-200 p-4 mb-5 space-y-3">
-      <div className="flex flex-wrap gap-2">
-        {PRESETS.map(p => (
-          <button key={p.label} onClick={() => applyPreset(p.label)}
-            className={`px-3 py-1.5 rounded-lg text-sm font-medium transition-colors ${preset === p.label ? 'bg-orchid-600 text-white' : 'bg-slate-100 text-slate-600 hover:bg-slate-200'}`}
-          >{p.label}</button>
-        ))}
-      </div>
-      {preset === 'Custom' && (
-        <div className="flex gap-3 flex-wrap">
-          {[['From', startDate, setStartDate], ['To', endDate, setEndDate]].map(([lbl, val, set]) => (
-            <div key={lbl}>
-              <label className="block text-xs text-slate-500 mb-1">{lbl}</label>
-              <input type="date" value={val} onChange={e => set(e.target.value)}
-                className="border border-slate-200 rounded-lg px-3 py-1.5 text-sm outline-none focus:ring-2 focus:ring-orchid-500" />
-            </div>
-          ))}
-        </div>
-      )}
-      <div className="flex gap-3 flex-wrap">
-        <select value={filterProject} onChange={e => setFilterProject(e.target.value)}
-          className="border border-slate-200 rounded-lg px-3 py-1.5 text-sm text-slate-600 outline-none focus:ring-2 focus:ring-orchid-500"
+    <div className="bg-white rounded-xl border border-slate-200 p-4 mb-5 flex flex-wrap items-center gap-3">
+      <DateRangePicker
+        from={range.from}
+        to={range.to}
+        onChange={setRange}
+      />
+      <select value={filterProject} onChange={e => setFilterProject(e.target.value)}
+        className="border border-slate-200 rounded-lg px-3 py-2 text-sm text-slate-600 outline-none focus:ring-2 focus:ring-orchid-500 bg-white"
+      >
+        <option value="">All projects</option>
+        {projects.map(p => <option key={p.id} value={p.id}>{p.name}</option>)}
+      </select>
+      {isManager && (
+        <select value={filterUser} onChange={e => setFilterUser(e.target.value)}
+          className="border border-slate-200 rounded-lg px-3 py-2 text-sm text-slate-600 outline-none focus:ring-2 focus:ring-orchid-500 bg-white"
         >
-          <option value="">All projects</option>
-          {projects.map(p => <option key={p.id} value={p.id}>{p.name}</option>)}
+          <option value="">All users</option>
+          {users.map(u => <option key={u.id} value={u.id}>{u.full_name || u.email}</option>)}
         </select>
-        {isManager && (
-          <select value={filterUser} onChange={e => setFilterUser(e.target.value)}
-            className="border border-slate-200 rounded-lg px-3 py-1.5 text-sm text-slate-600 outline-none focus:ring-2 focus:ring-orchid-500"
-          >
-            <option value="">All users</option>
-            {users.map(u => <option key={u.id} value={u.id}>{u.full_name || u.email}</option>)}
-          </select>
-        )}
-      </div>
+      )}
     </div>
   )
 
@@ -225,7 +208,6 @@ export default function Reports() {
         </button>
       </div>
 
-      {/* Tabs */}
       <div className="flex gap-1 mb-5 bg-slate-100 rounded-xl p-1 w-fit">
         {['summary', 'detailed', 'weekly'].map(t => (
           <button key={t} onClick={() => setTab(t)}
@@ -242,7 +224,6 @@ export default function Reports() {
         </div>
       ) : (
         <>
-          {/* SUMMARY */}
           {tab === 'summary' && (
             <div className="space-y-5">
               {statCards}
@@ -274,7 +255,6 @@ export default function Reports() {
             </div>
           )}
 
-          {/* DETAILED */}
           {tab === 'detailed' && (
             <div className="space-y-5">
               {statCards}
@@ -282,8 +262,8 @@ export default function Reports() {
                 <table className="w-full text-sm">
                   <thead>
                     <tr className="bg-slate-50 border-b border-slate-100">
-                      <th className="text-left px-4 py-3 text-xs font-semibold text-slate-500 uppercase tracking-wide">Description</th>
                       <th className="text-left px-4 py-3 text-xs font-semibold text-slate-500 uppercase tracking-wide">Project</th>
+                      <th className="text-left px-4 py-3 text-xs font-semibold text-slate-500 uppercase tracking-wide">Description</th>
                       {isManager && <th className="text-left px-4 py-3 text-xs font-semibold text-slate-500 uppercase tracking-wide">User</th>}
                       <th className="text-left px-4 py-3 text-xs font-semibold text-slate-500 uppercase tracking-wide">Date</th>
                       <th className="text-right px-4 py-3 text-xs font-semibold text-slate-500 uppercase tracking-wide">Duration</th>
@@ -292,9 +272,6 @@ export default function Reports() {
                   <tbody className="divide-y divide-slate-100">
                     {entries.map(entry => (
                       <tr key={entry.id} className="hover:bg-slate-50 transition-colors">
-                        <td className="px-4 py-3 text-slate-800 max-w-xs truncate">
-                          {entry.description || <span className="text-slate-400 italic">No description</span>}
-                        </td>
                         <td className="px-4 py-3">
                           {entry.project ? (
                             <span className="flex items-center gap-2">
@@ -303,8 +280,11 @@ export default function Reports() {
                             </span>
                           ) : <span className="text-slate-300">—</span>}
                         </td>
+                        <td className="px-4 py-3 text-slate-600 max-w-xs truncate">
+                          {entry.description || <span className="text-slate-400 italic">No description</span>}
+                        </td>
                         {isManager && <td className="px-4 py-3 text-slate-600">{entry.user?.full_name || entry.user?.email || '—'}</td>}
-                        <td className="px-4 py-3 text-slate-500">{entry.start_time.slice(0, 10)}</td>
+                        <td className="px-4 py-3 text-slate-500">{format(new Date(entry.start_time), 'yyyy-MM-dd')}</td>
                         <td className="px-4 py-3 text-right font-mono text-slate-700">{formatDuration(entry.duration ?? 0)}</td>
                       </tr>
                     ))}
@@ -321,7 +301,6 @@ export default function Reports() {
             </div>
           )}
 
-          {/* WEEKLY */}
           {tab === 'weekly' && (
             <div>
               <div className="flex items-center justify-between mb-4">
@@ -358,7 +337,7 @@ export default function Reports() {
                         {dayEntries.slice(0, 3).map(e => (
                           <div key={e.id} className="text-xs text-slate-500 truncate flex items-center gap-1">
                             <span className="w-1.5 h-1.5 rounded-full shrink-0" style={{ backgroundColor: e.project?.color ?? '#cbd5e1' }} />
-                            {e.description || e.project?.name || 'Entry'}
+                            {e.project?.name || e.description || 'Entry'}
                           </div>
                         ))}
                         {dayEntries.length > 3 && (

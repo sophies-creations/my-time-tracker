@@ -1,5 +1,5 @@
 import { useState, useRef, useEffect } from 'react'
-import { ChevronDown, LogOut, User, Shield } from 'lucide-react'
+import { ChevronDown, LogOut, User, Shield, Plus } from 'lucide-react'
 import { useAuth } from '../contexts/AuthContext'
 
 const ROLE_STYLES = {
@@ -27,6 +27,11 @@ export default function TopBar() {
     document.addEventListener('mousedown', onDown)
     return () => document.removeEventListener('mousedown', onDown)
   }, [])
+
+  function openAddTime() {
+    setOpen(false)
+    window.dispatchEvent(new CustomEvent('manual-entry:open', { detail: { entry: null } }))
+  }
 
   const role = profile?.role ?? 'member'
 
@@ -58,6 +63,13 @@ export default function TopBar() {
               </span>
             </div>
             <div className="py-1">
+              <button
+                onClick={openAddTime}
+                className="w-full flex items-center gap-2.5 px-4 py-2 text-sm text-slate-700 hover:bg-slate-50 text-left"
+              >
+                <Plus size={14} />
+                Add time
+              </button>
               <button
                 disabled
                 className="w-full flex items-center gap-2.5 px-4 py-2 text-sm text-slate-400 cursor-not-allowed"
