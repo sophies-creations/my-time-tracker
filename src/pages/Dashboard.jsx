@@ -1,9 +1,9 @@
-import { useState, useEffect, useMemo } from 'react'
+import { useState, useEffect, useMemo, useCallback } from 'react'
 import {
-  format, startOfWeek, endOfWeek, startOfMonth, endOfMonth,
+  format, startOfWeek, endOfWeek,
   startOfDay, endOfDay, eachDayOfInterval, isSameDay, formatDistanceToNowStrict,
 } from 'date-fns'
-import { Square } from 'lucide-react'
+import { Square, Pin } from 'lucide-react'
 import { supabase } from '../lib/supabase'
 import { useAuth } from '../contexts/AuthContext'
 import { formatDuration } from '../utils/formatters'
@@ -17,6 +17,8 @@ const NO_PROJECT = { id: '_none', name: 'Without project', color: '#94a3b8' }
 function projOf(e) {
   return e.project ? { id: e.project.id, name: e.project.name, color: e.project.color || FALLBACK[0] } : NO_PROJECT
 }
+
+function pinKey(uid) { return `tt:dashboard:pin:${uid}` }
 
 function StackedColumns({ days, perDay, max }) {
   return (
@@ -53,7 +55,7 @@ function Donut({ segments, total }) {
   const R = 40, circ = 2 * Math.PI * R
   let cum = 0
   return (
-    <div className="relative w-44 h-44">
+    <div className="relative w-44 h-44 shrink-0">
       <svg viewBox="0 0 100 100" className="w-44 h-44 -rotate-90">
         <circle cx="50" cy="50" r={R} fill="none" stroke="#f1f5f9" strokeWidth="13" />
         {total > 0 && segments.map((seg, i) => {
@@ -84,60 +86,110 @@ function MemberBar({ segments, total, max }) {
   )
 }
 
+function SectionHeader({ title, pinned, canPin, onPin }) {
+  return (
+    <div className="flex items-center justify-between mb-3">
+      <h3 className="text-sm font-semibold text-slate-700">{title}</h3>
+      {canPin && (
+        <button
+          onClick={onPin}
+          title={pinned ? 'Currently pinned to top — click to swap' : 'Pin this to the top'}
+          className={`p-1.5 rounded-lg transition-colors ${pinned ? 'text-orchid-600 bg-orchid-50' : 'text-slate-300 hover:text-orchid-500 hover:bg-orchid-50/60'}`}
+        >
+          <Pin size={13} fill={pinned ? 'currentColor' : 'none'} />
+        </button>
+      )}
+    </div>
+  )
+}
+
 export default function Dashboard() {
   const { user, isManager, isAdmin } = useAuth()
   const [scope, setScope]   = useState('me')
   const initialFrom = startOfWeek(new Date(), WEEK_OPT)
   const initialTo   = endOfWeek(new Date(), WEEK_OPT)
-  const [range, setRange] = useState({ from: initialFrom, to: initialTo })
+  const [range, setRange]   = useState({ from: initialFrom, to: initialTo })
   const [entries, setEntries] = useState([])
   const [members, setMembers] = useState([])
   const [latest, setLatest]   = useState({})
   const [loading, setLoading] = useState(true)
   const [, setTick] = useState(0)
 
-  useEffect(() => { fetchAll() }, [scope, range]) // eslint-disable-line react-hooks/exhaustive-deps
+  // Per-user pin preference (localStorage). 'donut' or 'list'.
+  const [pin, setPin] = useState('donut')
+  useEffect(() => {
+    if (!user) return
+    const stored = localStorage.getItem(pinKey(user.id))
+    if (stored === 'donut' || stored === 'list') setPin(stored)
+  }, [user?.id])
+  function setPinPref(next) {
+    setPin(next)
+    if (user) localStorage.setItem(pinKey(user.id), next)
+  }
 
-  // live ticking for running timers in team view
+  const fetchAll = useCallback(async () => {
+    if (!user) return
+    setLoading(true)
+    try {
+      const startISO = startOfDay(range.from).toISOString()
+      const endISO   = endOfDay(range.to ?? range.from).toISOString()
+
+      // Stopped entries in the range — used for ALL aggregations
+      let entryQ = supabase
+        .from('time_entries')
+        .select('id, duration, start_time, end_time, is_running, description, user_id, project:projects(id, name, color, client:clients(id, name))')
+        .eq('is_running', false)
+        .gte('start_time', startISO)
+        .lte('start_time', endISO)
+      if (scope === 'me') entryQ = entryQ.eq('user_id', user.id)
+
+      const jobs = [entryQ]
+      if (scope === 'team') {
+        jobs.push(
+          supabase.from('profiles').select('id, full_name, email, role').eq('active', true).neq('role', 'client'),
+          // Most-recent entry per user incl. running ones, for "Latest activity"
+          supabase.from('time_entries')
+            .select('id, duration, start_time, is_running, description, user_id, project:projects(id, name, color)')
+            .order('start_time', { ascending: false })
+            .limit(500),
+        )
+      }
+      const results = await Promise.all(jobs)
+      const entRes = results[0]
+      if (entRes.error) throw entRes.error
+      setEntries(entRes.data ?? [])
+
+      if (scope === 'team') {
+        setMembers(results[1]?.data ?? [])
+        const byUser = {}
+        for (const e of results[2]?.data ?? []) if (!byUser[e.user_id]) byUser[e.user_id] = e
+        setLatest(byUser)
+      }
+    } catch (err) {
+      console.error('[Dashboard] fetchAll error:', err)
+      setEntries([])
+    } finally {
+      setLoading(false)
+    }
+  }, [user, scope, range])
+
+  useEffect(() => { fetchAll() }, [fetchAll])
+
+  // Refresh when a timer is stopped / a manual entry is saved so the
+  // dashboard doesn't stay stuck at 0:00:00.
+  useEffect(() => {
+    const handler = () => fetchAll()
+    window.addEventListener('timeentry:saved', handler)
+    return () => window.removeEventListener('timeentry:saved', handler)
+  }, [fetchAll])
+
+  // Live ticking for any running timer in the team view
   const anyRunning = Object.values(latest).some(e => e?.is_running)
   useEffect(() => {
     if (!anyRunning) return
     const id = setInterval(() => setTick(t => t + 1), 1000)
     return () => clearInterval(id)
   }, [anyRunning])
-
-  async function fetchAll() {
-    setLoading(true)
-    const startISO = startOfDay(range.from).toISOString()
-    const endISO   = endOfDay(range.to ?? range.from).toISOString()
-
-    let q = supabase
-      .from('time_entries')
-      .select('id, duration, start_time, is_running, description, user_id, project:projects(id, name, color, client:clients(id, name))')
-      .gte('start_time', startISO)
-      .lte('start_time', endISO)
-    if (scope === 'me') q = q.eq('user_id', user.id)
-
-    const jobs = [q]
-    if (scope === 'team') {
-      jobs.push(
-        supabase.from('profiles').select('id, full_name, email, role').eq('active', true).neq('role', 'client'),
-        supabase.from('time_entries')
-          .select('id, duration, start_time, is_running, description, user_id, project:projects(id, name, color)')
-          .order('start_time', { ascending: false })
-          .limit(300),
-      )
-    }
-    const [entRes, memRes, latRes] = await Promise.all(jobs)
-    setEntries(entRes.data ?? [])
-    if (scope === 'team') {
-      setMembers(memRes?.data ?? [])
-      const byUser = {}
-      for (const e of latRes?.data ?? []) if (!byUser[e.user_id]) byUser[e.user_id] = e
-      setLatest(byUser)
-    }
-    setLoading(false)
-  }
 
   async function stopOtherUserTimer(entry, memberName) {
     if (!isAdmin) return
@@ -146,11 +198,7 @@ export default function Dashboard() {
     const duration = Math.floor((endTime - new Date(entry.start_time)) / 1000)
     const { error } = await supabase
       .from('time_entries')
-      .update({
-        end_time:   endTime.toISOString(),
-        duration,
-        is_running: false,
-      })
+      .update({ end_time: endTime.toISOString(), duration, is_running: false })
       .eq('id', entry.id)
     if (error) {
       console.error('[Dashboard] stop other timer failed:', error)
@@ -161,34 +209,34 @@ export default function Dashboard() {
     fetchAll()
   }
 
-  const finished  = entries.filter(e => !e.is_running)
-  const totalSecs = finished.reduce((s, e) => s + (e.duration ?? 0), 0)
+  // entries are already filtered to is_running=false — totals can use them directly.
+  const totalSecs = entries.reduce((s, e) => s + (e.duration ?? 0), 0)
 
   const byProject = useMemo(() => Object.values(
-    finished.reduce((acc, e) => {
+    entries.reduce((acc, e) => {
       const p = projOf(e)
       if (!acc[p.id]) acc[p.id] = { ...p, seconds: 0 }
       acc[p.id].seconds += e.duration ?? 0
       return acc
     }, {})
-  ).sort((a, b) => b.seconds - a.seconds), [entries]) // eslint-disable-line react-hooks/exhaustive-deps
+  ).sort((a, b) => b.seconds - a.seconds), [entries])
 
   const byClient = useMemo(() => Object.values(
-    finished.reduce((acc, e) => {
+    entries.reduce((acc, e) => {
       const c = e.project?.client
       if (!c) return acc
       if (!acc[c.id]) acc[c.id] = { name: c.name, seconds: 0 }
       acc[c.id].seconds += e.duration ?? 0
       return acc
     }, {})
-  ).sort((a, b) => b.seconds - a.seconds), [entries]) // eslint-disable-line react-hooks/exhaustive-deps
+  ).sort((a, b) => b.seconds - a.seconds), [entries])
 
   const days = useMemo(
     () => eachDayOfInterval({ start: range.from, end: range.to ?? range.from }),
     [range]
   )
   const perDay = useMemo(() => days.map(day => {
-    const dayEntries = finished.filter(e => isSameDay(new Date(e.start_time), day))
+    const dayEntries = entries.filter(e => isSameDay(new Date(e.start_time), day))
     const segs = Object.values(dayEntries.reduce((acc, e) => {
       const p = projOf(e)
       if (!acc[p.id]) acc[p.id] = { ...p, seconds: 0 }
@@ -196,23 +244,23 @@ export default function Dashboard() {
       return acc
     }, {}))
     return { total: segs.reduce((s, x) => s + x.seconds, 0), segments: segs }
-  }), [entries, days]) // eslint-disable-line react-hooks/exhaustive-deps
+  }), [entries, days])
   const maxDay = Math.max(...perDay.map(d => d.total), 1)
 
   const topActivities = useMemo(() => Object.values(
-    finished.reduce((acc, e) => {
+    entries.reduce((acc, e) => {
       const p = projOf(e)
       const key = `${e.description || ''}|${p.id}`
       if (!acc[key]) acc[key] = { description: e.description || '(no description)', project: p, seconds: 0 }
       acc[key].seconds += e.duration ?? 0
       return acc
     }, {})
-  ).sort((a, b) => b.seconds - a.seconds).slice(0, 10), [entries]) // eslint-disable-line react-hooks/exhaustive-deps
+  ).sort((a, b) => b.seconds - a.seconds).slice(0, 10), [entries])
 
   const teamRows = useMemo(() => {
     if (scope !== 'team') return []
     const perMember = {}
-    for (const e of finished) {
+    for (const e of entries) {
       if (!perMember[e.user_id]) perMember[e.user_id] = { seconds: 0, projects: {} }
       const p = projOf(e)
       perMember[e.user_id].seconds += e.duration ?? 0
@@ -232,13 +280,177 @@ export default function Dashboard() {
       if (ar !== br) return br - ar
       return (b.last ? new Date(b.last.start_time) : 0) - (a.last ? new Date(a.last.start_time) : 0)
     })
-  }, [scope, members, entries, latest]) // eslint-disable-line react-hooks/exhaustive-deps
+  }, [scope, members, entries, latest])
   const maxMember = Math.max(...teamRows.map(r => r.total), 1)
 
-  const sameDay      = isSameDay(range.from, range.to ?? range.from)
-  const rangeLabel   = sameDay
+  const sameDay    = isSameDay(range.from, range.to ?? range.from)
+  const rangeLabel = sameDay
     ? format(range.from, 'MMM d')
     : `${format(range.from, 'MMM d')} – ${format(range.to ?? range.from, 'MMM d')}`
+
+  /* ============ section blocks ============ */
+  const donutCard = (
+    <div className="bg-white rounded-xl border border-slate-200 p-5">
+      <SectionHeader
+        title="Project breakdown"
+        pinned={pin === 'donut'}
+        canPin
+        onPin={() => setPinPref('donut')}
+      />
+      <div className="flex flex-col sm:flex-row items-center gap-6">
+        <Donut segments={byProject} total={totalSecs} />
+        <div className="flex-1 w-full space-y-1">
+          {byProject.slice(0, 6).map((p, i) => (
+            <div key={i} className="flex items-center gap-2 text-xs text-slate-600">
+              <span className="w-2.5 h-2.5 rounded-full shrink-0" style={{ backgroundColor: p.color }} />
+              <span className="flex-1 truncate">{p.name}</span>
+              <span className="font-mono text-slate-500">{totalSecs ? Math.round((p.seconds / totalSecs) * 100) : 0}%</span>
+            </div>
+          ))}
+          {!byProject.length && <p className="text-xs text-slate-300 py-4 text-center">No tracked time</p>}
+        </div>
+      </div>
+    </div>
+  )
+
+  const listCard = (
+    <div className="bg-white rounded-xl border border-slate-200 p-5">
+      <SectionHeader
+        title="Time per project"
+        pinned={pin === 'list'}
+        canPin
+        onPin={() => setPinPref('list')}
+      />
+      <div className="space-y-2">
+        {byProject.map((p, i) => (
+          <div key={i} className="flex items-center gap-3">
+            <span className="w-28 text-right text-xs text-slate-500 truncate shrink-0">{p.name}</span>
+            <span className="font-mono text-xs text-slate-600 w-20 shrink-0">{formatDuration(p.seconds)}</span>
+            <div className="flex-1 h-3.5 bg-slate-100 rounded-sm overflow-hidden">
+              <div className="h-full rounded-sm" style={{ width: `${totalSecs ? (p.seconds / totalSecs) * 100 : 0}%`, backgroundColor: p.color }} />
+            </div>
+            <span className="w-12 text-right text-xs font-mono text-slate-400 shrink-0">
+              {totalSecs ? ((p.seconds / totalSecs) * 100).toFixed(1) : 0}%
+            </span>
+          </div>
+        ))}
+        {!byProject.length && <p className="text-xs text-slate-300 py-6 text-center">No tracked time this period</p>}
+      </div>
+    </div>
+  )
+
+  const pinnedFirst = pin === 'donut' ? [donutCard, listCard] : [listCard, donutCard]
+
+  const sharedSections = (
+    <div className="space-y-5">
+      {/* Top stat cards */}
+      <div className="grid grid-cols-3 bg-white rounded-xl border border-slate-200 divide-x divide-slate-100">
+        {[
+          ['Total time', formatDuration(totalSecs)],
+          ['Top project', byProject[0]?.name ?? '—'],
+          ['Top client', byClient[0]?.name ?? '—'],
+        ].map(([label, value]) => (
+          <div key={label} className="px-5 py-4 text-center">
+            <p className="text-xs text-slate-400 mb-1">{label}</p>
+            <p className="text-xl font-bold text-slate-800 truncate">{value}</p>
+          </div>
+        ))}
+      </div>
+
+      {/* Bar chart of the period + most-tracked list */}
+      <div className="grid grid-cols-1 lg:grid-cols-3 gap-5">
+        <div className="lg:col-span-2 bg-white rounded-xl border border-slate-200 p-5">
+          <h3 className="text-sm font-semibold text-slate-700 mb-1">Tracked time across {rangeLabel}</h3>
+          <StackedColumns days={days} perDay={perDay} max={maxDay} />
+        </div>
+        <div className="bg-white rounded-xl border border-slate-200 p-5">
+          <h3 className="text-sm font-semibold text-slate-700 mb-3">Most tracked activities</h3>
+          <div className="space-y-2.5 max-h-72 overflow-y-auto pr-1">
+            {topActivities.map((a, i) => (
+              <div key={i} className="flex items-start justify-between gap-3 text-sm">
+                <div className="min-w-0">
+                  <p className="truncate" style={{ color: a.project.color }}>● {a.project.name}</p>
+                  <p className="text-xs text-slate-500 truncate">{a.description}</p>
+                </div>
+                <span className="font-mono text-xs text-slate-500 shrink-0 pt-0.5">{formatDuration(a.seconds)}</span>
+              </div>
+            ))}
+            {!topActivities.length && <p className="text-xs text-slate-300 py-6 text-center">Nothing tracked this period</p>}
+          </div>
+        </div>
+      </div>
+
+      {/* Donut + project list (pinned order swappable) */}
+      <div className="grid grid-cols-1 lg:grid-cols-2 gap-5">
+        {pinnedFirst[0]}
+        {pinnedFirst[1]}
+      </div>
+    </div>
+  )
+
+  const teamTable = scope === 'team' && (
+    <div className="bg-white rounded-xl border border-slate-200 overflow-hidden">
+      <div className="px-5 py-3 border-b border-slate-100 text-xs font-semibold text-slate-400 uppercase tracking-wide grid grid-cols-12 gap-3">
+        <span className="col-span-3">Team member</span>
+        <span className="col-span-4">Latest activity</span>
+        <span className="col-span-2 text-right">Total ({rangeLabel})</span>
+        <span className="col-span-3" />
+      </div>
+      {teamRows.map(row => {
+        const last = row.last
+        const running = last?.is_running
+        const elapsed = running ? Math.floor((Date.now() - new Date(last.start_time)) / 1000) : null
+        const memberName = row.full_name || row.email
+        return (
+          <div key={row.id} className="px-5 py-3.5 border-b border-slate-50 grid grid-cols-12 gap-3 items-center hover:bg-slate-50/50">
+            <div className="col-span-3 flex items-center gap-3 min-w-0">
+              <div className="w-8 h-8 rounded-full bg-orchid-100 text-orchid-700 flex items-center justify-center text-xs font-bold shrink-0 uppercase">
+                {(memberName).slice(0, 2)}
+              </div>
+              <span className="text-sm font-medium text-slate-700 truncate">{memberName}</span>
+            </div>
+            <div className="col-span-4 min-w-0">
+              {last ? (
+                <div className="flex items-center gap-3 min-w-0">
+                  <div className="min-w-0">
+                    <p className="text-sm truncate" style={{ color: projOf(last).color }}>● {projOf(last).name}</p>
+                    <p className="text-xs text-slate-500 truncate">
+                      {last.description || <span className="text-slate-400 italic">No description</span>}
+                    </p>
+                  </div>
+                  {running ? (
+                    <div className="ml-auto shrink-0 flex items-center gap-2">
+                      <span className="text-xs font-mono text-emerald-600 flex items-center gap-1.5">
+                        {formatDuration(elapsed)}
+                        <span className="w-2 h-2 rounded-full bg-emerald-500 animate-pulse" /> In progress
+                      </span>
+                      {isAdmin && row.id !== user.id && (
+                        <button
+                          onClick={() => stopOtherUserTimer(last, memberName)}
+                          title={`Stop ${memberName}'s timer`}
+                          className="flex items-center gap-1 px-2 py-1 rounded-md text-xs font-semibold bg-red-500 hover:bg-red-600 text-white transition-colors"
+                        >
+                          <Square size={10} fill="currentColor" />
+                          Stop
+                        </button>
+                      )}
+                    </div>
+                  ) : (
+                    <span className="ml-auto shrink-0 text-xs text-slate-400">
+                      {formatDistanceToNowStrict(new Date(last.start_time), { addSuffix: true })}
+                    </span>
+                  )}
+                </div>
+              ) : <span className="text-xs text-slate-300">No activity yet</span>}
+            </div>
+            <div className="col-span-2 text-right text-sm font-mono text-slate-700">{formatDuration(row.total)}</div>
+            <div className="col-span-3"><MemberBar segments={row.segments} total={row.total} max={maxMember} /></div>
+          </div>
+        )
+      })}
+      {!teamRows.length && <p className="text-sm text-slate-400 text-center py-10">No team members found</p>}
+    </div>
+  )
 
   return (
     <div>
@@ -267,124 +479,10 @@ export default function Dashboard() {
         <div className="flex items-center justify-center py-20">
           <div className="w-6 h-6 border-2 border-orchid-600 border-t-transparent rounded-full animate-spin" />
         </div>
-      ) : scope === 'team' ? (
-        /* ============ TEAM VIEW ============ */
-        <div className="bg-white rounded-xl border border-slate-200 overflow-hidden">
-          <div className="px-5 py-3 border-b border-slate-100 text-xs font-semibold text-slate-400 uppercase tracking-wide grid grid-cols-12 gap-3">
-            <span className="col-span-3">Team member</span>
-            <span className="col-span-4">Latest activity</span>
-            <span className="col-span-2 text-right">Total ({rangeLabel})</span>
-            <span className="col-span-3" />
-          </div>
-          {teamRows.map(row => {
-            const last = row.last
-            const running = last?.is_running
-            const elapsed = running ? Math.floor((Date.now() - new Date(last.start_time)) / 1000) : null
-            const memberName = row.full_name || row.email
-            return (
-              <div key={row.id} className="px-5 py-3.5 border-b border-slate-50 grid grid-cols-12 gap-3 items-center hover:bg-slate-50/50">
-                <div className="col-span-3 flex items-center gap-3 min-w-0">
-                  <div className="w-8 h-8 rounded-full bg-orchid-100 text-orchid-700 flex items-center justify-center text-xs font-bold shrink-0 uppercase">
-                    {(memberName).slice(0, 2)}
-                  </div>
-                  <span className="text-sm font-medium text-slate-700 truncate">{memberName}</span>
-                </div>
-                <div className="col-span-4 min-w-0">
-                  {last ? (
-                    <div className="flex items-center gap-3 min-w-0">
-                      <div className="min-w-0">
-                        <p className="text-sm truncate" style={{ color: projOf(last).color }}>● {projOf(last).name}</p>
-                        <p className="text-xs text-slate-500 truncate">
-                          {last.description || <span className="text-slate-400 italic">No description</span>}
-                        </p>
-                      </div>
-                      {running ? (
-                        <div className="ml-auto shrink-0 flex items-center gap-2">
-                          <span className="text-xs font-mono text-emerald-600 flex items-center gap-1.5">
-                            {formatDuration(elapsed)}
-                            <span className="w-2 h-2 rounded-full bg-emerald-500 animate-pulse" /> In progress
-                          </span>
-                          {isAdmin && row.id !== user.id && (
-                            <button
-                              onClick={() => stopOtherUserTimer(last, memberName)}
-                              title={`Stop ${memberName}'s timer`}
-                              className="flex items-center gap-1 px-2 py-1 rounded-md text-xs font-semibold bg-red-500 hover:bg-red-600 text-white transition-colors"
-                            >
-                              <Square size={10} fill="currentColor" />
-                              Stop
-                            </button>
-                          )}
-                        </div>
-                      ) : (
-                        <span className="ml-auto shrink-0 text-xs text-slate-400">
-                          {formatDistanceToNowStrict(new Date(last.start_time), { addSuffix: true })}
-                        </span>
-                      )}
-                    </div>
-                  ) : <span className="text-xs text-slate-300">No activity yet</span>}
-                </div>
-                <div className="col-span-2 text-right text-sm font-mono text-slate-700">{formatDuration(row.total)}</div>
-                <div className="col-span-3"><MemberBar segments={row.segments} total={row.total} max={maxMember} /></div>
-              </div>
-            )
-          })}
-          {!teamRows.length && <p className="text-sm text-slate-400 text-center py-10">No team members found</p>}
-        </div>
       ) : (
-        /* ============ PERSONAL VIEW ============ */
         <div className="space-y-5">
-          <div className="grid grid-cols-3 bg-white rounded-xl border border-slate-200 divide-x divide-slate-100">
-            {[
-              ['Total time', formatDuration(totalSecs)],
-              ['Top project', byProject[0]?.name ?? '—'],
-              ['Top client', byClient[0]?.name ?? '—'],
-            ].map(([label, value]) => (
-              <div key={label} className="px-5 py-4 text-center">
-                <p className="text-xs text-slate-400 mb-1">{label}</p>
-                <p className="text-xl font-bold text-slate-800 truncate">{value}</p>
-              </div>
-            ))}
-          </div>
-
-          <div className="grid grid-cols-1 lg:grid-cols-3 gap-5">
-            <div className="lg:col-span-2 bg-white rounded-xl border border-slate-200 p-5">
-              <StackedColumns days={days} perDay={perDay} max={maxDay} />
-            </div>
-            <div className="bg-white rounded-xl border border-slate-200 p-5">
-              <h3 className="text-sm font-semibold text-slate-700 mb-3">Most tracked activities</h3>
-              <div className="space-y-2.5 max-h-72 overflow-y-auto pr-1">
-                {topActivities.map((a, i) => (
-                  <div key={i} className="flex items-start justify-between gap-3 text-sm">
-                    <div className="min-w-0">
-                      <p className="truncate" style={{ color: a.project.color }}>● {a.project.name}</p>
-                      <p className="text-xs text-slate-500 truncate">{a.description}</p>
-                    </div>
-                    <span className="font-mono text-xs text-slate-500 shrink-0 pt-0.5">{formatDuration(a.seconds)}</span>
-                  </div>
-                ))}
-                {!topActivities.length && <p className="text-xs text-slate-300 py-6 text-center">Nothing tracked this period</p>}
-              </div>
-            </div>
-          </div>
-
-          <div className="bg-white rounded-xl border border-slate-200 p-5 flex flex-col lg:flex-row gap-8 items-center">
-            <Donut segments={byProject} total={totalSecs} />
-            <div className="flex-1 w-full space-y-2">
-              {byProject.map((p, i) => (
-                <div key={i} className="flex items-center gap-3">
-                  <span className="w-28 text-right text-xs text-slate-500 truncate shrink-0">{p.name}</span>
-                  <span className="font-mono text-xs text-slate-600 w-16 shrink-0">{formatDuration(p.seconds)}</span>
-                  <div className="flex-1 h-3.5 bg-slate-100 rounded-sm overflow-hidden">
-                    <div className="h-full rounded-sm" style={{ width: `${totalSecs ? (p.seconds / totalSecs) * 100 : 0}%`, backgroundColor: p.color }} />
-                  </div>
-                  <span className="w-12 text-right text-xs font-mono text-slate-400 shrink-0">
-                    {totalSecs ? ((p.seconds / totalSecs) * 100).toFixed(1) : 0}%
-                  </span>
-                </div>
-              ))}
-              {!byProject.length && <p className="text-xs text-slate-300 py-6 text-center">No tracked time this period</p>}
-            </div>
-          </div>
+          {sharedSections}
+          {teamTable}
         </div>
       )}
     </div>

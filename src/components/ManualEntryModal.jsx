@@ -1,10 +1,49 @@
-import { useState, useEffect, useRef } from 'react'
+import { useState, useEffect } from 'react'
 import { X, Lock } from 'lucide-react'
 import { supabase } from '../lib/supabase'
 import { useAuth } from '../contexts/AuthContext'
 import { useData } from '../contexts/DataContext'
 import toast from 'react-hot-toast'
 import { format } from 'date-fns'
+
+const pad = n => String(n).padStart(2, '0')
+const clamp = (n, lo, hi) => Math.min(Math.max(n, lo), hi)
+
+function normalizeTime(raw, fallback) {
+  if (typeof raw !== 'string') return fallback
+  const digits = raw.replace(/[^\d]/g, '').slice(0, 6).padEnd(6, '0')
+  const h  = clamp(parseInt(digits.slice(0, 2), 10), 0, 23)
+  const m  = clamp(parseInt(digits.slice(2, 4), 10), 0, 59)
+  const s  = clamp(parseInt(digits.slice(4, 6), 10), 0, 59)
+  return `${pad(h)}:${pad(m)}:${pad(s)}`
+}
+
+function HmsInput({ value, onChange, ariaLabel }) {
+  // Locale-independent 24h HH:MM:SS input. Lets you type freely; on blur
+  // it normalises to two-digit fields and clamps each.
+  const [text, setText] = useState(value)
+  useEffect(() => { setText(value) }, [value])
+
+  function commit() {
+    const next = normalizeTime(text, value)
+    setText(next)
+    if (next !== value) onChange(next)
+  }
+
+  return (
+    <input
+      type="text"
+      inputMode="numeric"
+      aria-label={ariaLabel}
+      value={text}
+      placeholder="HH:MM:SS"
+      onChange={e => setText(e.target.value)}
+      onBlur={commit}
+      onKeyDown={e => { if (e.key === 'Enter') { e.preventDefault(); commit() } }}
+      className="w-full border border-slate-200 rounded-lg px-2 py-2 text-sm font-mono tabular-nums outline-none focus:ring-2 focus:ring-orchid-500"
+    />
+  )
+}
 
 export default function ManualEntryModal({ entry, onClose, onSaved }) {
   const { user, isAdmin } = useAuth()
@@ -13,12 +52,9 @@ export default function ManualEntryModal({ entry, onClose, onSaved }) {
   const [description, setDescription] = useState('')
   const [projectId, setProjectId]     = useState('')
   const [date, setDate]               = useState(format(new Date(), 'yyyy-MM-dd'))
-  const [startTime, setStartTime]     = useState('09:00')
-  const [endTime, setEndTime]         = useState('10:00')
+  const [startTime, setStartTime]     = useState('09:00:00')
+  const [endTime, setEndTime]         = useState('10:00:00')
   const [saving, setSaving]           = useState(false)
-  // Time inputs only have minute precision; keep the original seconds so
-  // short entries (e.g. a 6-second timer run) survive editing.
-  const seconds = useRef({ start: 0, end: 0 })
 
   useEffect(() => {
     if (entry) {
@@ -27,37 +63,42 @@ export default function ManualEntryModal({ entry, onClose, onSaved }) {
       const start = new Date(entry.start_time)
       const end   = entry.end_time ? new Date(entry.end_time) : null
       setDate(format(start, 'yyyy-MM-dd'))
-      setStartTime(format(start, 'HH:mm'))
-      setEndTime(end ? format(end, 'HH:mm') : '10:00')
-      seconds.current = { start: start.getSeconds(), end: end ? end.getSeconds() : 0 }
-    } else {
-      seconds.current = { start: 0, end: 0 }
+      setStartTime(`${pad(start.getHours())}:${pad(start.getMinutes())}:${pad(start.getSeconds())}`)
+      setEndTime(end
+        ? `${pad(end.getHours())}:${pad(end.getMinutes())}:${pad(end.getSeconds())}`
+        : '10:00:00')
     }
   }, [entry])
 
   async function handleSave() {
-    const start = new Date(`${date}T${startTime}:00`)
-    start.setSeconds(seconds.current.start)
-    const end = new Date(`${date}T${endTime}:00`)
-    end.setSeconds(seconds.current.end)
-    const startISO = start.toISOString()
-    const endISO   = end.toISOString()
+    const startNorm = normalizeTime(startTime, '00:00:00')
+    const endNorm   = normalizeTime(endTime, '00:00:00')
+    const [sh, sm, ss] = startNorm.split(':').map(Number)
+    const [eh, em, es] = endNorm.split(':').map(Number)
+    const start = new Date(`${date}T00:00:00`)
+    start.setHours(sh, sm, ss, 0)
+    const end = new Date(`${date}T00:00:00`)
+    end.setHours(eh, em, es, 0)
     const duration = Math.floor((end - start) / 1000)
     if (duration <= 0) { toast.error('End time must be after start time'); return }
 
     setSaving(true)
     try {
+      const payload = {
+        description: description.trim(),
+        project_id:  projectId || null,
+        start_time:  start.toISOString(),
+        end_time:    end.toISOString(),
+        duration,
+      }
       if (entry) {
-        const { error } = await supabase.from('time_entries').update({
-          description: description.trim(), project_id: projectId || null,
-          start_time: startISO, end_time: endISO, duration,
-        }).eq('id', entry.id)
+        const { error } = await supabase.from('time_entries').update(payload).eq('id', entry.id)
         if (error) throw error
       } else {
         const { error } = await supabase.from('time_entries').insert({
-          user_id: user.id, description: description.trim(),
-          project_id: projectId || null, start_time: startISO,
-          end_time: endISO, duration, is_running: false,
+          ...payload,
+          user_id: user.id,
+          is_running: false,
         })
         if (error) throw error
       }
@@ -65,7 +106,7 @@ export default function ManualEntryModal({ entry, onClose, onSaved }) {
       onSaved()
     } catch (err) {
       console.error('[ManualEntryModal] save error:', err)
-      toast.error('Save failed')
+      toast.error(err?.message ?? 'Save failed')
       setSaving(false)
     }
   }
@@ -113,20 +154,23 @@ export default function ManualEntryModal({ entry, onClose, onSaved }) {
           </div>
 
           <div className="grid grid-cols-3 gap-3">
-            {[
-              { label: 'Date',  type: 'date', value: date,      setter: setDate },
-              { label: 'Start', type: 'time', value: startTime, setter: setStartTime },
-              { label: 'End',   type: 'time', value: endTime,   setter: setEndTime },
-            ].map(({ label, type, value, setter }) => (
-              <div key={label}>
-                <label className="block text-xs font-medium text-slate-600 mb-1.5">{label}</label>
-                <input
-                  type={type} value={value} onChange={e => setter(e.target.value)}
-                  className="w-full border border-slate-200 rounded-lg px-2 py-2 text-sm outline-none focus:ring-2 focus:ring-orchid-500"
-                />
-              </div>
-            ))}
+            <div>
+              <label className="block text-xs font-medium text-slate-600 mb-1.5">Date</label>
+              <input
+                type="date" value={date} onChange={e => setDate(e.target.value)}
+                className="w-full border border-slate-200 rounded-lg px-2 py-2 text-sm outline-none focus:ring-2 focus:ring-orchid-500"
+              />
+            </div>
+            <div>
+              <label className="block text-xs font-medium text-slate-600 mb-1.5">Start</label>
+              <HmsInput value={startTime} onChange={setStartTime} ariaLabel="Start time HH:MM:SS" />
+            </div>
+            <div>
+              <label className="block text-xs font-medium text-slate-600 mb-1.5">End</label>
+              <HmsInput value={endTime} onChange={setEndTime} ariaLabel="End time HH:MM:SS" />
+            </div>
           </div>
+          <p className="text-[11px] text-slate-400 -mt-2">24-hour format, with seconds (HH:MM:SS).</p>
         </div>
 
         <div className="flex justify-end gap-2 px-6 py-4 border-t border-slate-100">
