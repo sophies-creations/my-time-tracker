@@ -1,5 +1,5 @@
 import { useState, useEffect, useRef } from 'react'
-import { X } from 'lucide-react'
+import { X, Lock } from 'lucide-react'
 import { supabase } from '../lib/supabase'
 import { useAuth } from '../contexts/AuthContext'
 import { useData } from '../contexts/DataContext'
@@ -7,8 +7,10 @@ import toast from 'react-hot-toast'
 import { format } from 'date-fns'
 
 export default function ManualEntryModal({ entry, onClose, onSaved }) {
-  const { user } = useAuth()
+  const { user, isAdmin } = useAuth()
   const { projects, tags: allTags, refreshTags } = useData()
+  // Only Admins may change the project on a stopped entry that already exists
+  const projectLocked = !!entry && !isAdmin
   const [description, setDescription] = useState('')
   const [projectId, setProjectId]     = useState('')
   const [tagIds, setTagIds]           = useState([])
@@ -123,10 +125,19 @@ export default function ManualEntryModal({ entry, onClose, onSaved }) {
           </div>
 
           <div>
-            <label className="block text-xs font-medium text-slate-600 mb-1.5">Project</label>
+            <label className="block text-xs font-medium text-slate-600 mb-1.5 flex items-center gap-1.5">
+              Project
+              {projectLocked && (
+                <span className="inline-flex items-center gap-1 text-[10px] text-slate-400 font-normal">
+                  <Lock size={9} />
+                  Admin only
+                </span>
+              )}
+            </label>
             <select
               value={projectId} onChange={e => setProjectId(e.target.value)}
-              className="w-full border border-slate-200 rounded-lg px-3 py-2 text-sm outline-none focus:ring-2 focus:ring-orchid-500"
+              disabled={projectLocked}
+              className="w-full border border-slate-200 rounded-lg px-3 py-2 text-sm outline-none focus:ring-2 focus:ring-orchid-500 disabled:bg-slate-50 disabled:text-slate-500 disabled:cursor-not-allowed"
             >
               <option value="">No project</option>
               {projects.map(p => <option key={p.id} value={p.id}>{p.name}</option>)}

@@ -1,7 +1,7 @@
 import { NavLink } from 'react-router-dom'
 import {
   Clock, LayoutDashboard, BarChart2, CalendarDays,
-  FolderOpen, Users, Building2, Tag, LogOut,
+  FolderOpen, Users, Building2, Tag,
 } from 'lucide-react'
 import { useAuth } from '../contexts/AuthContext'
 
@@ -16,14 +16,8 @@ const NAV = [
   { to: '/tags',      Icon: Tag,               label: 'Tags' },
 ]
 
-const ROLE_BADGE = {
-  admin:   'bg-red-500/20 text-red-300',
-  manager: 'bg-orchid-500/20 text-orchid-300',
-  member:  'bg-slate-600 text-slate-400',
-}
-
 export default function Sidebar() {
-  const { profile, signOut, isAdmin, isManager } = useAuth()
+  const { isAdmin, isManager } = useAuth()
 
   const visible = NAV.filter(item => {
     if (item.adminOnly  && !isAdmin)   return false
@@ -60,30 +54,6 @@ export default function Sidebar() {
           </NavLink>
         ))}
       </nav>
-
-      {/* User / sign-out */}
-      <div className="p-2.5" style={{ borderTop: '1px solid #2d2647' }}>
-        <div className="px-3 py-2 mb-0.5">
-          <p className="text-xs font-medium text-slate-200 truncate">
-            {profile?.full_name || profile?.email}
-          </p>
-          {profile?.full_name && (
-            <p className="text-xs text-slate-500 truncate">{profile.email}</p>
-          )}
-          {profile?.role && (
-            <span className={`inline-block mt-1.5 text-xs px-2 py-0.5 rounded-full font-medium ${ROLE_BADGE[profile.role] ?? ROLE_BADGE.member}`}>
-              {profile.role}
-            </span>
-          )}
-        </div>
-        <button
-          onClick={signOut}
-          className="flex items-center gap-3 w-full px-3 py-2.5 rounded-lg text-sm text-slate-400 hover:bg-white/8 hover:text-white transition-colors"
-        >
-          <LogOut size={15} />
-          Sign out
-        </button>
-      </div>
     </aside>
   )
 }

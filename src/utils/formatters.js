@@ -10,7 +10,7 @@ export function formatDuration(seconds) {
 
 export function formatTime(iso) {
   if (!iso) return ''
-  return format(parseISO(iso), 'HH:mm')
+  return format(parseISO(iso), 'HH:mm:ss')
 }
 
 export function formatDateHeader(dateStr) {

@@ -1,5 +1,5 @@
-import { useState, useEffect, useRef } from 'react'
-import { Play, Square, DollarSign, Tag, ChevronDown, Plus } from 'lucide-react'
+import { useState, useEffect, useRef, useMemo } from 'react'
+import { Play, Square, DollarSign, Tag, ChevronDown, Plus, Star } from 'lucide-react'
 import { supabase } from '../lib/supabase'
 import { useAuth } from '../contexts/AuthContext'
 import { useData } from '../contexts/DataContext'
@@ -15,7 +15,7 @@ const PROJECT_COLORS = [
 
 export default function TimerWidget() {
   const { user } = useAuth()
-  const { projects, tags, refreshProjects } = useData()
+  const { projects, tags, favoriteIds, toggleFavorite, refreshProjects } = useData()
   const [running, setRunning]         = useState(null)
   const [elapsed, setElapsed]         = useState(0)
   const [description, setDescription] = useState('')
@@ -49,6 +49,21 @@ export default function TimerWidget() {
     return () => clearInterval(id)
   }, [running])
 
+  // Pre-fill the description+project when a one-click resume fires
+  useEffect(() => {
+    function onResume(e) {
+      const { description: d, projectId: pid } = e.detail ?? {}
+      setDescription(d ?? '')
+      setProjectId(pid ?? '')
+      // Auto-start once running entry isn't blocking
+      if (!running && pid) {
+        setTimeout(() => handleStartWith(d ?? '', pid), 0)
+      }
+    }
+    window.addEventListener('timer:resume', onResume)
+    return () => window.removeEventListener('timer:resume', onResume)
+  }, [running]) // eslint-disable-line react-hooks/exhaustive-deps
+
   async function fetchRunningEntry() {
     const { data } = await supabase
       .from('time_entries')
@@ -66,9 +81,12 @@ export default function TimerWidget() {
     }
   }
 
-  async function handleStart() {
-    // Guard: if a running entry already exists (e.g. from another tab or a
-    // previous failed stop), resume it instead of inserting a duplicate.
+  async function handleStartWith(desc, pid) {
+    if (!pid) {
+      toast.error('Pick a project first')
+      setProjectOpen(true)
+      return
+    }
     const { data: existing } = await supabase
       .from('time_entries')
       .select('*, time_entry_tags(tag_id)')
@@ -90,8 +108,8 @@ export default function TimerWidget() {
       .from('time_entries')
       .insert({
         user_id:    user.id,
-        description: description.trim(),
-        project_id: projectId || null,
+        description: (desc ?? '').trim(),
+        project_id: pid,
         billable,
         start_time: new Date().toISOString(),
         is_running: true,
@@ -111,6 +129,10 @@ export default function TimerWidget() {
     setRunning(data)
     setElapsed(0)
     toast.success('Timer started')
+  }
+
+  async function handleStart() {
+    return handleStartWith(description, projectId)
   }
 
   async function handleStop() {
@@ -174,6 +196,19 @@ export default function TimerWidget() {
   const selectedProject = projects.find(p => p.id === projectId)
   const selectedTags    = tags.filter(t => tagIds.includes(t.id))
 
+  const { favorites, others } = useMemo(() => {
+    const favs = [], oth = []
+    for (const p of projects) {
+      if (favoriteIds.has(p.id)) favs.push(p); else oth.push(p)
+    }
+    return { favorites: favs, others: oth }
+  }, [projects, favoriteIds])
+
+  const canStart = !!projectId
+  const startTitle = running
+    ? 'Stop the timer'
+    : (canStart ? 'Start the timer' : 'Pick a project to start the timer')
+
   return (
     <div className="border-b border-slate-200 bg-white flex items-center flex-shrink-0 h-14 px-3">
       <input
@@ -191,11 +226,11 @@ export default function TimerWidget() {
       <div className="relative flex-shrink-0" ref={projectRef}>
         <button
           onClick={() => { setProjectOpen(v => !v); setTagsOpen(false) }}
-          className={`flex items-center gap-1.5 px-3 py-1.5 rounded-lg text-sm transition-colors hover:bg-slate-50 ${selectedProject ? 'text-slate-800' : 'text-slate-400'}`}
+          className={`flex items-center gap-1.5 px-3 py-1.5 rounded-lg text-sm transition-colors hover:bg-slate-50 ${selectedProject ? 'text-slate-800' : 'text-orchid-600'}`}
         >
           {selectedProject
             ? <span className="w-2.5 h-2.5 rounded-full flex-shrink-0" style={{ backgroundColor: selectedProject.color }} />
-            : <span className="w-2.5 h-2.5 rounded-full border-2 border-slate-300 flex-shrink-0" />
+            : <span className="w-2.5 h-2.5 rounded-full border-2 border-orchid-400 flex-shrink-0" />
           }
           <span className="max-w-[7rem] truncate">
             {selectedProject ? selectedProject.name : 'Project'}
@@ -203,23 +238,25 @@ export default function TimerWidget() {
           <ChevronDown size={12} className="text-slate-400 flex-shrink-0" />
         </button>
         {projectOpen && (
-          <div className="absolute top-full left-0 mt-1 bg-white border border-slate-200 rounded-xl shadow-lg z-50 min-w-[11rem] max-h-64 overflow-y-auto py-1">
-            <button
-              onClick={() => { setProjectId(''); setProjectOpen(false) }}
-              className="w-full flex items-center gap-2.5 px-3 py-2 text-sm text-slate-500 hover:bg-slate-50 text-left"
-            >
-              <span className="w-2.5 h-2.5 rounded-full border-2 border-slate-300 flex-shrink-0" />
-              No project
-            </button>
-            {projects.map(p => (
-              <button
-                key={p.id}
-                onClick={() => { setProjectId(p.id); setProjectOpen(false) }}
-                className={`w-full flex items-center gap-2.5 px-3 py-2 text-sm hover:bg-slate-50 text-left ${projectId === p.id ? 'text-slate-900 font-medium' : 'text-slate-700'}`}
-              >
-                <span className="w-2.5 h-2.5 rounded-full flex-shrink-0" style={{ backgroundColor: p.color }} />
-                {p.name}
-              </button>
+          <div className="absolute top-full left-0 mt-1 bg-white border border-slate-200 rounded-xl shadow-lg z-50 min-w-[14rem] max-h-72 overflow-y-auto py-1">
+            {favorites.length > 0 && (
+              <>
+                <p className="px-3 pt-1.5 pb-1 text-[10px] font-semibold text-slate-400 uppercase tracking-wide flex items-center gap-1">
+                  <Star size={9} className="text-amber-400" fill="currentColor" />
+                  Favorites
+                </p>
+                {favorites.map(p => (
+                  <ProjectRow key={p.id} project={p} selected={projectId === p.id} isFavorite
+                    onSelect={() => { setProjectId(p.id); setProjectOpen(false) }}
+                    onToggleFav={() => toggleFavorite(p.id)} />
+                ))}
+                <div className="border-t border-slate-100 my-1" />
+              </>
+            )}
+            {others.map(p => (
+              <ProjectRow key={p.id} project={p} selected={projectId === p.id} isFavorite={false}
+                onSelect={() => { setProjectId(p.id); setProjectOpen(false) }}
+                onToggleFav={() => toggleFavorite(p.id)} />
             ))}
             {!projects.length && <p className="px-3 py-2 text-xs text-slate-400">No projects yet</p>}
             <div className="border-t border-slate-100 mt-1 pt-1 px-2 pb-1">
@@ -295,16 +332,45 @@ export default function TimerWidget() {
 
       <div className="w-px h-8 bg-slate-200 mx-2 flex-shrink-0" />
 
-      <span className="font-mono text-sm font-semibold text-slate-700 w-[4.5rem] text-center flex-shrink-0 tabular-nums">
+      <span className="font-mono text-sm font-semibold text-slate-700 w-[5.5rem] text-center flex-shrink-0 tabular-nums">
         {formatDuration(running ? elapsed : 0)}
       </span>
 
       <button
         onClick={running ? handleStop : handleStart}
-        className={`flex items-center gap-1.5 ml-3 px-5 py-2 rounded-lg text-sm font-semibold transition-colors flex-shrink-0 ${running ? 'bg-red-500 hover:bg-red-600 text-white' : 'bg-orchid-600 hover:bg-orchid-700 text-white'}`}
+        disabled={!running && !canStart}
+        title={startTitle}
+        className={`flex items-center gap-1.5 ml-3 px-5 py-2 rounded-lg text-sm font-semibold transition-colors flex-shrink-0 ${
+          running
+            ? 'bg-red-500 hover:bg-red-600 text-white'
+            : canStart
+              ? 'bg-orchid-600 hover:bg-orchid-700 text-white'
+              : 'bg-slate-200 text-slate-400 cursor-not-allowed'
+        }`}
       >
         {running ? <Square size={13} fill="currentColor" /> : <Play size={13} fill="currentColor" />}
         {running ? 'Stop' : 'Start'}
+      </button>
+    </div>
+  )
+}
+
+function ProjectRow({ project, selected, isFavorite, onSelect, onToggleFav }) {
+  return (
+    <div className={`group flex items-center hover:bg-slate-50 ${selected ? 'bg-slate-50' : ''}`}>
+      <button
+        onClick={onSelect}
+        className={`flex-1 flex items-center gap-2.5 px-3 py-2 text-sm text-left ${selected ? 'text-slate-900 font-medium' : 'text-slate-700'}`}
+      >
+        <span className="w-2.5 h-2.5 rounded-full flex-shrink-0" style={{ backgroundColor: project.color }} />
+        <span className="truncate">{project.name}</span>
+      </button>
+      <button
+        onClick={e => { e.stopPropagation(); onToggleFav() }}
+        title={isFavorite ? 'Unfavorite' : 'Favorite'}
+        className={`px-2 py-1 transition-opacity ${isFavorite ? 'text-amber-400 hover:text-amber-500' : 'text-slate-300 opacity-0 group-hover:opacity-100 hover:text-amber-400'}`}
+      >
+        <Star size={13} fill={isFavorite ? 'currentColor' : 'none'} />
       </button>
     </div>
   )

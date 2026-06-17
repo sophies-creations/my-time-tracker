@@ -9,21 +9,25 @@ export function DataProvider({ children }) {
   const [projects, setProjects] = useState([])
   const [tags, setTags]         = useState([])
   const [clients, setClients]   = useState([])
+  const [favoriteIds, setFavoriteIds] = useState(new Set())
 
   useEffect(() => {
     if (!user) {
       setProjects([])
       setTags([])
       setClients([])
+      setFavoriteIds(new Set())
       return
     }
 
     Promise.all([
       supabase.from('projects').select('id, name, color').eq('archived', false).order('name'),
       supabase.from('tags').select('id, name').order('name'),
-    ]).then(([{ data: proj }, { data: t }]) => {
+      supabase.from('project_favorites').select('project_id').eq('user_id', user.id),
+    ]).then(([{ data: proj }, { data: t }, { data: favs }]) => {
       setProjects(proj ?? [])
       setTags(t ?? [])
+      setFavoriteIds(new Set((favs ?? []).map(f => f.project_id)))
     })
 
     if (!isClient) {
@@ -46,8 +50,35 @@ export function DataProvider({ children }) {
     supabase.from('clients').select('id, name, email, profile_id, client_projects(project_id)').order('name')
       .then(({ data }) => setClients(data ?? []))
 
+  async function toggleFavorite(projectId) {
+    if (!user) return
+    const isFav = favoriteIds.has(projectId)
+    // Optimistic update
+    setFavoriteIds(prev => {
+      const next = new Set(prev)
+      if (isFav) next.delete(projectId); else next.add(projectId)
+      return next
+    })
+    if (isFav) {
+      const { error } = await supabase.from('project_favorites')
+        .delete().eq('user_id', user.id).eq('project_id', projectId)
+      if (error) {
+        setFavoriteIds(prev => { const n = new Set(prev); n.add(projectId); return n })
+      }
+    } else {
+      const { error } = await supabase.from('project_favorites')
+        .insert({ user_id: user.id, project_id: projectId })
+      if (error) {
+        setFavoriteIds(prev => { const n = new Set(prev); n.delete(projectId); return n })
+      }
+    }
+  }
+
   return (
-    <DataContext.Provider value={{ projects, tags, clients, refreshProjects, refreshTags, refreshClients }}>
+    <DataContext.Provider value={{
+      projects, tags, clients, favoriteIds,
+      refreshProjects, refreshTags, refreshClients, toggleFavorite,
+    }}>
       {children}
     </DataContext.Provider>
   )
