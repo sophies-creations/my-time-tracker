@@ -1,9 +1,9 @@
 import { useState, useEffect, useCallback, useMemo } from 'react'
 import {
   format, startOfWeek, endOfWeek, addWeeks, subWeeks,
-  eachDayOfInterval, startOfDay, endOfDay,
+  eachDayOfInterval, startOfDay, endOfDay, startOfMonth,
 } from 'date-fns'
-import { Download, ChevronLeft, ChevronRight } from 'lucide-react'
+import { Download, ChevronLeft, ChevronRight, ChevronDown } from 'lucide-react'
 import { supabase } from '../lib/supabase'
 import { useAuth } from '../contexts/AuthContext'
 import { useData } from '../contexts/DataContext'
@@ -14,6 +14,73 @@ import toast from 'react-hot-toast'
 
 const WEEK_OPT = { weekStartsOn: 1 }
 const CHART_COLORS = ['#DA70D6','#C44FBA','#A33E98','#3B82F6','#10B981','#F59E0B','#EF4444','#6366F1']
+
+const GROUP_OPTIONS = [
+  { key: 'project',     label: 'Project' },
+  { key: 'client',      label: 'Client' },
+  { key: 'user',        label: 'User' },
+  { key: 'description', label: 'Description' },
+  { key: 'month',       label: 'Month' },
+  { key: 'week',        label: 'Week' },
+  { key: 'date',        label: 'Date' },
+]
+
+function groupKey(entry, by) {
+  switch (by) {
+    case 'project':     return entry.project?.id ?? '_none'
+    case 'client':      return entry.project?.client?.id ?? '_none'
+    case 'user':        return entry.user?.id ?? '_none'
+    case 'description': return (entry.description ?? '').trim().toLowerCase() || '_none'
+    case 'month':       return format(startOfMonth(new Date(entry.start_time)), 'yyyy-MM')
+    case 'week':        return format(startOfWeek(new Date(entry.start_time), WEEK_OPT), 'yyyy-MM-dd')
+    case 'date':        return format(new Date(entry.start_time), 'yyyy-MM-dd')
+    default:            return '_none'
+  }
+}
+
+function groupMeta(entry, by) {
+  switch (by) {
+    case 'project':
+      return {
+        label: entry.project?.name ?? 'Without project',
+        color: entry.project?.color ?? '#94a3b8',
+      }
+    case 'client':
+      return {
+        label: entry.project?.client?.name ?? 'No client',
+        color: null,
+      }
+    case 'user':
+      return {
+        label: entry.user?.full_name || entry.user?.email || 'Unknown user',
+        color: null,
+      }
+    case 'description':
+      return {
+        label: entry.description?.trim() || 'No description',
+        color: null,
+      }
+    case 'month':
+      return {
+        label: format(new Date(entry.start_time), 'MMMM yyyy'),
+        color: null,
+      }
+    case 'week': {
+      const start = startOfWeek(new Date(entry.start_time), WEEK_OPT)
+      const end   = endOfWeek(new Date(entry.start_time), WEEK_OPT)
+      return {
+        label: `Week of ${format(start, 'MMM d')} – ${format(end, 'MMM d, yyyy')}`,
+        color: null,
+      }
+    }
+    case 'date':
+      return {
+        label: format(new Date(entry.start_time), 'EEE, MMM d, yyyy'),
+        color: null,
+      }
+    default: return { label: '', color: null }
+  }
+}
 
 function BarChart({ data }) {
   const max = Math.max(...data.map(d => d.seconds), 1)
@@ -73,6 +140,8 @@ export default function Reports() {
   const [range, setRange] = useState({ from: initialFrom, to: initialTo })
   const [filterProject, setFilterProject] = useState('')
   const [filterUser, setFilterUser] = useState('')
+  const [groupBy, setGroupBy]       = useState('project')
+  const [expanded, setExpanded]     = useState(() => new Set())
   const [entries, setEntries]       = useState([])
   const [users, setUsers]           = useState([])
   const [loading, setLoading]       = useState(false)
@@ -90,7 +159,7 @@ export default function Reports() {
       const endISO   = endOfDay(range.to ?? range.from).toISOString()
       let q = supabase
         .from('time_entries')
-        .select(`*, project:projects(id, name, color), user:profiles(id, full_name, email)`)
+        .select(`*, project:projects(id, name, color, client:clients(id, name)), user:profiles(id, full_name, email)`)
         .eq('is_running', false)
         .gte('start_time', startISO)
         .lte('start_time', endISO)
@@ -157,6 +226,34 @@ export default function Reports() {
     return acc
   }, {})
 
+  // Build groups in fetch order (entries already ordered newest-first).
+  // Sort group order by total duration desc.
+  const grouped = useMemo(() => {
+    const map = new Map()
+    for (const e of entries) {
+      const k = groupKey(e, groupBy)
+      if (!map.has(k)) {
+        const meta = groupMeta(e, groupBy)
+        map.set(k, { key: k, label: meta.label, color: meta.color, entries: [], seconds: 0 })
+      }
+      const g = map.get(k)
+      g.entries.push(e)
+      g.seconds += e.duration ?? 0
+    }
+    return Array.from(map.values()).sort((a, b) => b.seconds - a.seconds)
+  }, [entries, groupBy])
+
+  function toggleGroup(k) {
+    setExpanded(prev => {
+      const next = new Set(prev)
+      if (next.has(k)) next.delete(k); else next.add(k)
+      return next
+    })
+  }
+
+  function expandAll()   { setExpanded(new Set(grouped.map(g => g.key))) }
+  function collapseAll() { setExpanded(new Set()) }
+
   const filterBar = (
     <div className="bg-white rounded-xl border border-slate-200 p-4 mb-5 flex flex-wrap items-center gap-3">
       <DateRangePicker
@@ -177,6 +274,16 @@ export default function Reports() {
           <option value="">All users</option>
           {users.map(u => <option key={u.id} value={u.id}>{u.full_name || u.email}</option>)}
         </select>
+      )}
+      {tab === 'detailed' && (
+        <div className="flex items-center gap-2 ml-auto">
+          <label className="text-xs font-medium text-slate-500 uppercase tracking-wide">Group by</label>
+          <select value={groupBy} onChange={e => { setGroupBy(e.target.value); setExpanded(new Set()) }}
+            className="border border-slate-200 rounded-lg px-3 py-2 text-sm text-slate-700 outline-none focus:ring-2 focus:ring-orchid-500 bg-white"
+          >
+            {GROUP_OPTIONS.map(o => <option key={o.key} value={o.key}>{o.label}</option>)}
+          </select>
+        </div>
       )}
     </div>
   )
@@ -258,45 +365,86 @@ export default function Reports() {
           {tab === 'detailed' && (
             <div className="space-y-5">
               {statCards}
-              <div className="bg-white rounded-xl border border-slate-200 overflow-hidden">
-                <table className="w-full text-sm">
-                  <thead>
-                    <tr className="bg-slate-50 border-b border-slate-100">
-                      <th className="text-left px-4 py-3 text-xs font-semibold text-slate-500 uppercase tracking-wide">Project</th>
-                      <th className="text-left px-4 py-3 text-xs font-semibold text-slate-500 uppercase tracking-wide">Description</th>
-                      {isManager && <th className="text-left px-4 py-3 text-xs font-semibold text-slate-500 uppercase tracking-wide">User</th>}
-                      <th className="text-left px-4 py-3 text-xs font-semibold text-slate-500 uppercase tracking-wide">Date</th>
-                      <th className="text-right px-4 py-3 text-xs font-semibold text-slate-500 uppercase tracking-wide">Duration</th>
-                    </tr>
-                  </thead>
-                  <tbody className="divide-y divide-slate-100">
-                    {entries.map(entry => (
-                      <tr key={entry.id} className="hover:bg-slate-50 transition-colors">
-                        <td className="px-4 py-3">
-                          {entry.project ? (
-                            <span className="flex items-center gap-2">
-                              <span className="w-2 h-2 rounded-full shrink-0" style={{ backgroundColor: entry.project.color }} />
-                              <span className="text-slate-700">{entry.project.name}</span>
-                            </span>
-                          ) : <span className="text-slate-300">—</span>}
-                        </td>
-                        <td className="px-4 py-3 text-slate-600 max-w-xs truncate">
-                          {entry.description || <span className="text-slate-400 italic">No description</span>}
-                        </td>
-                        {isManager && <td className="px-4 py-3 text-slate-600">{entry.user?.full_name || entry.user?.email || '—'}</td>}
-                        <td className="px-4 py-3 text-slate-500">{format(new Date(entry.start_time), 'yyyy-MM-dd')}</td>
-                        <td className="px-4 py-3 text-right font-mono text-slate-700">{formatDuration(entry.duration ?? 0)}</td>
-                      </tr>
-                    ))}
-                    {!entries.length && (
-                      <tr>
-                        <td colSpan={isManager ? 5 : 4} className="px-4 py-14 text-center text-slate-400">
-                          No entries for this period
-                        </td>
-                      </tr>
-                    )}
-                  </tbody>
-                </table>
+              {grouped.length > 0 && (
+                <div className="flex justify-end gap-2">
+                  <button
+                    onClick={expandAll}
+                    className="text-xs font-medium text-slate-500 hover:text-orchid-700 transition-colors"
+                  >Expand all</button>
+                  <span className="text-xs text-slate-300">·</span>
+                  <button
+                    onClick={collapseAll}
+                    className="text-xs font-medium text-slate-500 hover:text-orchid-700 transition-colors"
+                  >Collapse all</button>
+                </div>
+              )}
+              <div className="space-y-3">
+                {grouped.map(g => {
+                  const isOpen = expanded.has(g.key)
+                  return (
+                    <div key={g.key} className="bg-white rounded-xl border border-slate-200 overflow-hidden shadow-sm">
+                      <button
+                        onClick={() => toggleGroup(g.key)}
+                        className="w-full flex items-center gap-3 px-4 py-3 bg-orchid-50/70 border-b border-orchid-100 hover:bg-orchid-100/60 transition-colors text-left"
+                      >
+                        <ChevronDown
+                          size={14}
+                          className={`text-orchid-700 transition-transform shrink-0 ${isOpen ? '' : '-rotate-90'}`}
+                        />
+                        {g.color && (
+                          <span className="w-2.5 h-2.5 rounded-full shrink-0" style={{ backgroundColor: g.color }} />
+                        )}
+                        <span className="text-sm font-semibold text-orchid-900 truncate flex-1">
+                          {g.label}
+                        </span>
+                        <span className="text-xs text-orchid-700 font-medium shrink-0">
+                          {g.entries.length} entr{g.entries.length === 1 ? 'y' : 'ies'}
+                        </span>
+                        <span className="font-mono text-sm font-semibold text-orchid-900 shrink-0">
+                          {formatDuration(g.seconds)}
+                        </span>
+                      </button>
+                      {isOpen && (
+                        <table className="w-full text-sm">
+                          <thead>
+                            <tr className="bg-slate-50/60 border-b border-slate-100">
+                              <th className="text-left px-4 py-2 text-[10px] font-semibold text-slate-400 uppercase tracking-wide">Project</th>
+                              <th className="text-left px-4 py-2 text-[10px] font-semibold text-slate-400 uppercase tracking-wide">Description</th>
+                              {isManager && <th className="text-left px-4 py-2 text-[10px] font-semibold text-slate-400 uppercase tracking-wide">User</th>}
+                              <th className="text-left px-4 py-2 text-[10px] font-semibold text-slate-400 uppercase tracking-wide">Date</th>
+                              <th className="text-right px-4 py-2 text-[10px] font-semibold text-slate-400 uppercase tracking-wide">Duration</th>
+                            </tr>
+                          </thead>
+                          <tbody className="divide-y divide-slate-100">
+                            {g.entries.map(entry => (
+                              <tr key={entry.id} className="hover:bg-slate-50 transition-colors">
+                                <td className="px-4 py-2.5">
+                                  {entry.project ? (
+                                    <span className="flex items-center gap-2">
+                                      <span className="w-2 h-2 rounded-full shrink-0" style={{ backgroundColor: entry.project.color }} />
+                                      <span className="text-slate-700">{entry.project.name}</span>
+                                    </span>
+                                  ) : <span className="text-slate-300">—</span>}
+                                </td>
+                                <td className="px-4 py-2.5 text-slate-600 max-w-xs truncate">
+                                  {entry.description || <span className="text-slate-400 italic">No description</span>}
+                                </td>
+                                {isManager && <td className="px-4 py-2.5 text-slate-600">{entry.user?.full_name || entry.user?.email || '—'}</td>}
+                                <td className="px-4 py-2.5 text-slate-500">{format(new Date(entry.start_time), 'yyyy-MM-dd')}</td>
+                                <td className="px-4 py-2.5 text-right font-mono text-slate-700">{formatDuration(entry.duration ?? 0)}</td>
+                              </tr>
+                            ))}
+                          </tbody>
+                        </table>
+                      )}
+                    </div>
+                  )
+                })}
+                {!grouped.length && (
+                  <div className="bg-white rounded-xl border border-slate-200 px-4 py-14 text-center text-slate-400">
+                    No entries for this period
+                  </div>
+                )}
               </div>
             </div>
           )}

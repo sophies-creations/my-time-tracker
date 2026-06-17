@@ -1,7 +1,7 @@
 import { useState, useRef, useEffect } from 'react'
 import { DayPicker } from 'react-day-picker'
 import 'react-day-picker/style.css'
-import { format, startOfToday, startOfWeek, endOfWeek, startOfMonth, endOfMonth, subWeeks, subMonths, isSameDay } from 'date-fns'
+import { format, startOfToday, startOfWeek, endOfWeek, startOfMonth, endOfMonth, startOfYear, endOfYear, subWeeks, subMonths, subYears, isSameDay } from 'date-fns'
 import { Calendar as CalendarIcon, ChevronDown } from 'lucide-react'
 
 const WEEK_OPT = { weekStartsOn: 1 }
@@ -14,6 +14,8 @@ const PRESETS = [
   { label: 'Last week',      range: () => ({ from: startOfWeek(subWeeks(new Date(), 1), WEEK_OPT), to: endOfWeek(subWeeks(new Date(), 1), WEEK_OPT) }) },
   { label: 'This month',     range: () => ({ from: startOfMonth(new Date()),             to: endOfMonth(new Date()) }) },
   { label: 'Last month',     range: () => ({ from: startOfMonth(subMonths(new Date(), 1)), to: endOfMonth(subMonths(new Date(), 1)) }) },
+  { label: 'This year',      range: () => ({ from: startOfYear(new Date()),              to: endOfYear(new Date()) }) },
+  { label: 'Last year',      range: () => ({ from: startOfYear(subYears(new Date(), 1)),  to: endOfYear(subYears(new Date(), 1)) }) },
 ]
 
 function dateOnly(d) {

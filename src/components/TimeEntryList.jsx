@@ -64,16 +64,16 @@ export default function TimeEntryList({ entries, onEdit, onRefresh }) {
           This week: <span className="font-mono font-semibold text-slate-700">{formatDuration(weekTotal)}</span>
         </span>
       </div>
-      <div className="space-y-6">
+      <div className="space-y-5">
         {Object.entries(grouped).map(([date, dayEntries]) => {
           const totalSecs = dayEntries.reduce((sum, e) => sum + (e.duration ?? 0), 0)
           return (
-            <div key={date}>
-              <div className="flex items-center justify-between mb-2 px-1">
-                <h3 className="text-sm font-semibold text-slate-600">{formatDateHeader(date)}</h3>
-                <span className="text-sm font-mono text-slate-500">Total: {formatDuration(totalSecs)}</span>
+            <div key={date} className="rounded-xl border border-slate-200 overflow-hidden shadow-sm">
+              <div className="flex items-center justify-between px-4 py-2.5 bg-orchid-50/70 border-b border-orchid-100">
+                <h3 className="text-sm font-semibold text-orchid-900">{formatDateHeader(date)}</h3>
+                <span className="text-sm font-mono text-orchid-800">Total: {formatDuration(totalSecs)}</span>
               </div>
-              <div className="bg-white rounded-xl border border-slate-200 divide-y divide-slate-100">
+              <div className="bg-white divide-y divide-slate-100">
                 {dayEntries.map(entry => (
                   <div key={entry.id} className="flex items-center gap-3 px-4 py-3 group">
                     <div className="flex-1 min-w-0">
