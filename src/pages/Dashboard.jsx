@@ -3,7 +3,7 @@ import {
   format, startOfWeek, endOfWeek,
   startOfDay, endOfDay, eachDayOfInterval, isSameDay, formatDistanceToNowStrict,
 } from 'date-fns'
-import { Square, Pin } from 'lucide-react'
+import { Square } from 'lucide-react'
 import { supabase } from '../lib/supabase'
 import { useAuth } from '../contexts/AuthContext'
 import { formatDuration } from '../utils/formatters'
@@ -17,8 +17,6 @@ const NO_PROJECT = { id: '_none', name: 'Without project', color: '#94a3b8' }
 function projOf(e) {
   return e.project ? { id: e.project.id, name: e.project.name, color: e.project.color || FALLBACK[0] } : NO_PROJECT
 }
-
-function pinKey(uid) { return `tt:dashboard:pin:${uid}` }
 
 function StackedColumns({ days, perDay, max }) {
   return (
@@ -86,61 +84,31 @@ function MemberBar({ segments, total, max }) {
   )
 }
 
-function SectionHeader({ title, pinned, canPin, onPin }) {
-  return (
-    <div className="flex items-center justify-between mb-3">
-      <h3 className="text-sm font-semibold text-slate-700">{title}</h3>
-      {canPin && (
-        <button
-          onClick={onPin}
-          title={pinned ? 'Currently pinned to top — click to swap' : 'Pin this to the top'}
-          className={`p-1.5 rounded-lg transition-colors ${pinned ? 'text-orchid-600 bg-orchid-50' : 'text-slate-300 hover:text-orchid-500 hover:bg-orchid-50/60'}`}
-        >
-          <Pin size={13} fill={pinned ? 'currentColor' : 'none'} />
-        </button>
-      )}
-    </div>
-  )
-}
-
 export default function Dashboard() {
   const { user, isManager, isAdmin } = useAuth()
   const [scope, setScope]   = useState('me')
   const initialFrom = startOfWeek(new Date(), WEEK_OPT)
   const initialTo   = endOfWeek(new Date(), WEEK_OPT)
   const [range, setRange]   = useState({ from: initialFrom, to: initialTo })
-  const [entries, setEntries] = useState([])
+  const [allEntries, setAllEntries] = useState([])
   const [members, setMembers] = useState([])
   const [latest, setLatest]   = useState({})
   const [loading, setLoading] = useState(true)
   const [, setTick] = useState(0)
 
-  // Per-user pin preference (localStorage). 'donut' or 'list'.
-  const [pin, setPin] = useState('donut')
-  useEffect(() => {
-    if (!user) return
-    const stored = localStorage.getItem(pinKey(user.id))
-    if (stored === 'donut' || stored === 'list') setPin(stored)
-  }, [user?.id])
-  function setPinPref(next) {
-    setPin(next)
-    if (user) localStorage.setItem(pinKey(user.id), next)
-  }
-
   const fetchAll = useCallback(async () => {
     if (!user) return
     setLoading(true)
     try {
-      const startISO = startOfDay(range.from).toISOString()
-      const endISO   = endOfDay(range.to ?? range.from).toISOString()
-
-      // Stopped entries in the range — used for ALL aggregations
+      // Mirror the Tracker fetch — no DB date filter. We pull a wide
+      // window of stopped entries and apply the range as a client-side
+      // filter so we never have timezone-string drift.
       let entryQ = supabase
         .from('time_entries')
-        .select('id, duration, start_time, end_time, is_running, description, user_id, project:projects(id, name, color, client:clients(id, name))')
+        .select('id, duration, start_time, end_time, is_running, description, user_id, project_id, project:projects(id, name, color, client_id, client:clients(id, name))')
         .eq('is_running', false)
-        .gte('start_time', startISO)
-        .lte('start_time', endISO)
+        .order('start_time', { ascending: false })
+        .limit(2000)
       if (scope === 'me') entryQ = entryQ.eq('user_id', user.id)
 
       const jobs = [entryQ]
@@ -157,7 +125,7 @@ export default function Dashboard() {
       const results = await Promise.all(jobs)
       const entRes = results[0]
       if (entRes.error) throw entRes.error
-      setEntries(entRes.data ?? [])
+      setAllEntries(entRes.data ?? [])
 
       if (scope === 'team') {
         setMembers(results[1]?.data ?? [])
@@ -167,16 +135,15 @@ export default function Dashboard() {
       }
     } catch (err) {
       console.error('[Dashboard] fetchAll error:', err)
-      setEntries([])
+      setAllEntries([])
     } finally {
       setLoading(false)
     }
-  }, [user, scope, range])
+  }, [user, scope])
 
   useEffect(() => { fetchAll() }, [fetchAll])
 
-  // Refresh when a timer is stopped / a manual entry is saved so the
-  // dashboard doesn't stay stuck at 0:00:00.
+  // Refetch when a timer is stopped or a manual entry is saved.
   useEffect(() => {
     const handler = () => fetchAll()
     window.addEventListener('timeentry:saved', handler)
@@ -209,7 +176,17 @@ export default function Dashboard() {
     fetchAll()
   }
 
-  // entries are already filtered to is_running=false — totals can use them directly.
+  // Client-side date filter — compares Date objects in local time so
+  // there's no UTC-string mismatch with what the user expects.
+  const entries = useMemo(() => {
+    const from = startOfDay(range.from)
+    const to   = endOfDay(range.to ?? range.from)
+    return allEntries.filter(e => {
+      const t = new Date(e.start_time)
+      return t >= from && t <= to
+    })
+  }, [allEntries, range])
+
   const totalSecs = entries.reduce((s, e) => s + (e.duration ?? 0), 0)
 
   const byProject = useMemo(() => Object.values(
@@ -288,170 +265,6 @@ export default function Dashboard() {
     ? format(range.from, 'MMM d')
     : `${format(range.from, 'MMM d')} – ${format(range.to ?? range.from, 'MMM d')}`
 
-  /* ============ section blocks ============ */
-  const donutCard = (
-    <div className="bg-white rounded-xl border border-slate-200 p-5">
-      <SectionHeader
-        title="Project breakdown"
-        pinned={pin === 'donut'}
-        canPin
-        onPin={() => setPinPref('donut')}
-      />
-      <div className="flex flex-col sm:flex-row items-center gap-6">
-        <Donut segments={byProject} total={totalSecs} />
-        <div className="flex-1 w-full space-y-1">
-          {byProject.slice(0, 6).map((p, i) => (
-            <div key={i} className="flex items-center gap-2 text-xs text-slate-600">
-              <span className="w-2.5 h-2.5 rounded-full shrink-0" style={{ backgroundColor: p.color }} />
-              <span className="flex-1 truncate">{p.name}</span>
-              <span className="font-mono text-slate-500">{totalSecs ? Math.round((p.seconds / totalSecs) * 100) : 0}%</span>
-            </div>
-          ))}
-          {!byProject.length && <p className="text-xs text-slate-300 py-4 text-center">No tracked time</p>}
-        </div>
-      </div>
-    </div>
-  )
-
-  const listCard = (
-    <div className="bg-white rounded-xl border border-slate-200 p-5">
-      <SectionHeader
-        title="Time per project"
-        pinned={pin === 'list'}
-        canPin
-        onPin={() => setPinPref('list')}
-      />
-      <div className="space-y-2">
-        {byProject.map((p, i) => (
-          <div key={i} className="flex items-center gap-3">
-            <span className="w-28 text-right text-xs text-slate-500 truncate shrink-0">{p.name}</span>
-            <span className="font-mono text-xs text-slate-600 w-20 shrink-0">{formatDuration(p.seconds)}</span>
-            <div className="flex-1 h-3.5 bg-slate-100 rounded-sm overflow-hidden">
-              <div className="h-full rounded-sm" style={{ width: `${totalSecs ? (p.seconds / totalSecs) * 100 : 0}%`, backgroundColor: p.color }} />
-            </div>
-            <span className="w-12 text-right text-xs font-mono text-slate-400 shrink-0">
-              {totalSecs ? ((p.seconds / totalSecs) * 100).toFixed(1) : 0}%
-            </span>
-          </div>
-        ))}
-        {!byProject.length && <p className="text-xs text-slate-300 py-6 text-center">No tracked time this period</p>}
-      </div>
-    </div>
-  )
-
-  const pinnedFirst = pin === 'donut' ? [donutCard, listCard] : [listCard, donutCard]
-
-  const sharedSections = (
-    <div className="space-y-5">
-      {/* Top stat cards */}
-      <div className="grid grid-cols-3 bg-white rounded-xl border border-slate-200 divide-x divide-slate-100">
-        {[
-          ['Total time', formatDuration(totalSecs)],
-          ['Top project', byProject[0]?.name ?? '—'],
-          ['Top client', byClient[0]?.name ?? '—'],
-        ].map(([label, value]) => (
-          <div key={label} className="px-5 py-4 text-center">
-            <p className="text-xs text-slate-400 mb-1">{label}</p>
-            <p className="text-xl font-bold text-slate-800 truncate">{value}</p>
-          </div>
-        ))}
-      </div>
-
-      {/* Bar chart of the period + most-tracked list */}
-      <div className="grid grid-cols-1 lg:grid-cols-3 gap-5">
-        <div className="lg:col-span-2 bg-white rounded-xl border border-slate-200 p-5">
-          <h3 className="text-sm font-semibold text-slate-700 mb-1">Tracked time across {rangeLabel}</h3>
-          <StackedColumns days={days} perDay={perDay} max={maxDay} />
-        </div>
-        <div className="bg-white rounded-xl border border-slate-200 p-5">
-          <h3 className="text-sm font-semibold text-slate-700 mb-3">Most tracked activities</h3>
-          <div className="space-y-2.5 max-h-72 overflow-y-auto pr-1">
-            {topActivities.map((a, i) => (
-              <div key={i} className="flex items-start justify-between gap-3 text-sm">
-                <div className="min-w-0">
-                  <p className="truncate" style={{ color: a.project.color }}>● {a.project.name}</p>
-                  <p className="text-xs text-slate-500 truncate">{a.description}</p>
-                </div>
-                <span className="font-mono text-xs text-slate-500 shrink-0 pt-0.5">{formatDuration(a.seconds)}</span>
-              </div>
-            ))}
-            {!topActivities.length && <p className="text-xs text-slate-300 py-6 text-center">Nothing tracked this period</p>}
-          </div>
-        </div>
-      </div>
-
-      {/* Donut + project list (pinned order swappable) */}
-      <div className="grid grid-cols-1 lg:grid-cols-2 gap-5">
-        {pinnedFirst[0]}
-        {pinnedFirst[1]}
-      </div>
-    </div>
-  )
-
-  const teamTable = scope === 'team' && (
-    <div className="bg-white rounded-xl border border-slate-200 overflow-hidden">
-      <div className="px-5 py-3 border-b border-slate-100 text-xs font-semibold text-slate-400 uppercase tracking-wide grid grid-cols-12 gap-3">
-        <span className="col-span-3">Team member</span>
-        <span className="col-span-4">Latest activity</span>
-        <span className="col-span-2 text-right">Total ({rangeLabel})</span>
-        <span className="col-span-3" />
-      </div>
-      {teamRows.map(row => {
-        const last = row.last
-        const running = last?.is_running
-        const elapsed = running ? Math.floor((Date.now() - new Date(last.start_time)) / 1000) : null
-        const memberName = row.full_name || row.email
-        return (
-          <div key={row.id} className="px-5 py-3.5 border-b border-slate-50 grid grid-cols-12 gap-3 items-center hover:bg-slate-50/50">
-            <div className="col-span-3 flex items-center gap-3 min-w-0">
-              <div className="w-8 h-8 rounded-full bg-orchid-100 text-orchid-700 flex items-center justify-center text-xs font-bold shrink-0 uppercase">
-                {(memberName).slice(0, 2)}
-              </div>
-              <span className="text-sm font-medium text-slate-700 truncate">{memberName}</span>
-            </div>
-            <div className="col-span-4 min-w-0">
-              {last ? (
-                <div className="flex items-center gap-3 min-w-0">
-                  <div className="min-w-0">
-                    <p className="text-sm truncate" style={{ color: projOf(last).color }}>● {projOf(last).name}</p>
-                    <p className="text-xs text-slate-500 truncate">
-                      {last.description || <span className="text-slate-400 italic">No description</span>}
-                    </p>
-                  </div>
-                  {running ? (
-                    <div className="ml-auto shrink-0 flex items-center gap-2">
-                      <span className="text-xs font-mono text-emerald-600 flex items-center gap-1.5">
-                        {formatDuration(elapsed)}
-                        <span className="w-2 h-2 rounded-full bg-emerald-500 animate-pulse" /> In progress
-                      </span>
-                      {isAdmin && row.id !== user.id && (
-                        <button
-                          onClick={() => stopOtherUserTimer(last, memberName)}
-                          title={`Stop ${memberName}'s timer`}
-                          className="flex items-center gap-1 px-2 py-1 rounded-md text-xs font-semibold bg-red-500 hover:bg-red-600 text-white transition-colors"
-                        >
-                          <Square size={10} fill="currentColor" />
-                          Stop
-                        </button>
-                      )}
-                    </div>
-                  ) : (
-                    <span className="ml-auto shrink-0 text-xs text-slate-400">
-                      {formatDistanceToNowStrict(new Date(last.start_time), { addSuffix: true })}
-                    </span>
-                  )}
-                </div>
-              ) : <span className="text-xs text-slate-300">No activity yet</span>}
-            </div>
-            <div className="col-span-2 text-right text-sm font-mono text-slate-700">{formatDuration(row.total)}</div>
-            <div className="col-span-3"><MemberBar segments={row.segments} total={row.total} max={maxMember} /></div>
-          </div>
-        )
-      })}
-      {!teamRows.length && <p className="text-sm text-slate-400 text-center py-10">No team members found</p>}
-    </div>
-  )
-
   return (
     <div>
       <div className="flex flex-wrap items-center justify-between gap-3 mb-6">
@@ -481,8 +294,144 @@ export default function Dashboard() {
         </div>
       ) : (
         <div className="space-y-5">
-          {sharedSections}
-          {teamTable}
+          {/* Top stat cards */}
+          <div className="grid grid-cols-3 bg-white rounded-xl border border-slate-200 divide-x divide-slate-100">
+            {[
+              ['Total time', formatDuration(totalSecs)],
+              ['Top project', byProject[0]?.name ?? '—'],
+              ['Top client', byClient[0]?.name ?? '—'],
+            ].map(([label, value]) => (
+              <div key={label} className="px-5 py-4 text-center">
+                <p className="text-xs text-slate-400 mb-1">{label}</p>
+                <p className="text-xl font-bold text-slate-800 truncate">{value}</p>
+              </div>
+            ))}
+          </div>
+
+          {/* Bar chart + most-tracked list */}
+          <div className="grid grid-cols-1 lg:grid-cols-3 gap-5">
+            <div className="lg:col-span-2 bg-white rounded-xl border border-slate-200 p-5">
+              <h3 className="text-sm font-semibold text-slate-700 mb-1">Tracked time across {rangeLabel}</h3>
+              <StackedColumns days={days} perDay={perDay} max={maxDay} />
+            </div>
+            <div className="bg-white rounded-xl border border-slate-200 p-5">
+              <h3 className="text-sm font-semibold text-slate-700 mb-3">Most tracked activities</h3>
+              <div className="space-y-2.5 max-h-72 overflow-y-auto pr-1">
+                {topActivities.map((a, i) => (
+                  <div key={i} className="flex items-start justify-between gap-3 text-sm">
+                    <div className="min-w-0">
+                      <p className="truncate" style={{ color: a.project.color }}>● {a.project.name}</p>
+                      <p className="text-xs text-slate-500 truncate">{a.description}</p>
+                    </div>
+                    <span className="font-mono text-xs text-slate-500 shrink-0 pt-0.5">{formatDuration(a.seconds)}</span>
+                  </div>
+                ))}
+                {!topActivities.length && <p className="text-xs text-slate-300 py-6 text-center">Nothing tracked this period</p>}
+              </div>
+            </div>
+          </div>
+
+          {/* Donut + project list */}
+          <div className="grid grid-cols-1 lg:grid-cols-2 gap-5">
+            <div className="bg-white rounded-xl border border-slate-200 p-5">
+              <h3 className="text-sm font-semibold text-slate-700 mb-3">Project breakdown</h3>
+              <div className="flex flex-col sm:flex-row items-center gap-6">
+                <Donut segments={byProject} total={totalSecs} />
+                <div className="flex-1 w-full space-y-1">
+                  {byProject.slice(0, 6).map((p, i) => (
+                    <div key={i} className="flex items-center gap-2 text-xs text-slate-600">
+                      <span className="w-2.5 h-2.5 rounded-full shrink-0" style={{ backgroundColor: p.color }} />
+                      <span className="flex-1 truncate">{p.name}</span>
+                      <span className="font-mono text-slate-500">{totalSecs ? Math.round((p.seconds / totalSecs) * 100) : 0}%</span>
+                    </div>
+                  ))}
+                  {!byProject.length && <p className="text-xs text-slate-300 py-4 text-center">No tracked time</p>}
+                </div>
+              </div>
+            </div>
+            <div className="bg-white rounded-xl border border-slate-200 p-5">
+              <h3 className="text-sm font-semibold text-slate-700 mb-3">Time per project</h3>
+              <div className="space-y-2">
+                {byProject.map((p, i) => (
+                  <div key={i} className="flex items-center gap-3">
+                    <span className="w-28 text-right text-xs text-slate-500 truncate shrink-0">{p.name}</span>
+                    <span className="font-mono text-xs text-slate-600 w-20 shrink-0">{formatDuration(p.seconds)}</span>
+                    <div className="flex-1 h-3.5 bg-slate-100 rounded-sm overflow-hidden">
+                      <div className="h-full rounded-sm" style={{ width: `${totalSecs ? (p.seconds / totalSecs) * 100 : 0}%`, backgroundColor: p.color }} />
+                    </div>
+                    <span className="w-12 text-right text-xs font-mono text-slate-400 shrink-0">
+                      {totalSecs ? ((p.seconds / totalSecs) * 100).toFixed(1) : 0}%
+                    </span>
+                  </div>
+                ))}
+                {!byProject.length && <p className="text-xs text-slate-300 py-6 text-center">No tracked time this period</p>}
+              </div>
+            </div>
+          </div>
+
+          {scope === 'team' && (
+            <div className="bg-white rounded-xl border border-slate-200 overflow-hidden">
+              <div className="px-5 py-3 border-b border-slate-100 text-xs font-semibold text-slate-400 uppercase tracking-wide grid grid-cols-12 gap-3">
+                <span className="col-span-3">Team member</span>
+                <span className="col-span-4">Latest activity</span>
+                <span className="col-span-2 text-right">Total ({rangeLabel})</span>
+                <span className="col-span-3" />
+              </div>
+              {teamRows.map(row => {
+                const last = row.last
+                const running = last?.is_running
+                const elapsed = running ? Math.floor((Date.now() - new Date(last.start_time)) / 1000) : null
+                const memberName = row.full_name || row.email
+                return (
+                  <div key={row.id} className="px-5 py-3.5 border-b border-slate-50 grid grid-cols-12 gap-3 items-center hover:bg-slate-50/50">
+                    <div className="col-span-3 flex items-center gap-3 min-w-0">
+                      <div className="w-8 h-8 rounded-full bg-orchid-100 text-orchid-700 flex items-center justify-center text-xs font-bold shrink-0 uppercase">
+                        {(memberName).slice(0, 2)}
+                      </div>
+                      <span className="text-sm font-medium text-slate-700 truncate">{memberName}</span>
+                    </div>
+                    <div className="col-span-4 min-w-0">
+                      {last ? (
+                        <div className="flex items-center gap-3 min-w-0">
+                          <div className="min-w-0">
+                            <p className="text-sm truncate" style={{ color: projOf(last).color }}>● {projOf(last).name}</p>
+                            <p className="text-xs text-slate-500 truncate">
+                              {last.description || <span className="text-slate-400 italic">No description</span>}
+                            </p>
+                          </div>
+                          {running ? (
+                            <div className="ml-auto shrink-0 flex items-center gap-2">
+                              <span className="text-xs font-mono text-emerald-600 flex items-center gap-1.5">
+                                {formatDuration(elapsed)}
+                                <span className="w-2 h-2 rounded-full bg-emerald-500 animate-pulse" /> In progress
+                              </span>
+                              {isAdmin && row.id !== user.id && (
+                                <button
+                                  onClick={() => stopOtherUserTimer(last, memberName)}
+                                  title={`Stop ${memberName}'s timer`}
+                                  className="flex items-center gap-1 px-2 py-1 rounded-md text-xs font-semibold bg-red-500 hover:bg-red-600 text-white transition-colors"
+                                >
+                                  <Square size={10} fill="currentColor" />
+                                  Stop
+                                </button>
+                              )}
+                            </div>
+                          ) : (
+                            <span className="ml-auto shrink-0 text-xs text-slate-400">
+                              {formatDistanceToNowStrict(new Date(last.start_time), { addSuffix: true })}
+                            </span>
+                          )}
+                        </div>
+                      ) : <span className="text-xs text-slate-300">No activity yet</span>}
+                    </div>
+                    <div className="col-span-2 text-right text-sm font-mono text-slate-700">{formatDuration(row.total)}</div>
+                    <div className="col-span-3"><MemberBar segments={row.segments} total={row.total} max={maxMember} /></div>
+                  </div>
+                )
+              })}
+              {!teamRows.length && <p className="text-sm text-slate-400 text-center py-10">No team members found</p>}
+            </div>
+          )}
         </div>
       )}
     </div>
