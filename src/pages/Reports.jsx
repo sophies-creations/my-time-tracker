@@ -1,7 +1,7 @@
 import { useState, useEffect, useCallback, useMemo } from 'react'
 import {
   format, startOfWeek, endOfWeek, addWeeks, subWeeks,
-  eachDayOfInterval, startOfDay, endOfDay, startOfMonth, isSameDay,
+  eachDayOfInterval, startOfDay, endOfDay, startOfMonth,
 } from 'date-fns'
 import { Download, ChevronLeft, ChevronRight, ChevronDown } from 'lucide-react'
 import { supabase } from '../lib/supabase'
@@ -10,7 +10,7 @@ import { useData } from '../contexts/DataContext'
 import { formatDuration } from '../utils/formatters'
 import { exportToExcel } from '../utils/export'
 import DateRangePicker from '../components/DateRangePicker'
-import StackedDayBars from '../components/StackedDayBars'
+import StackedDayBars, { buildBuckets } from '../components/StackedDayBars'
 import toast from 'react-hot-toast'
 
 const WEEK_OPT = { weekStartsOn: 1 }
@@ -26,6 +26,12 @@ const GROUP_OPTIONS = [
   { key: 'month',       label: 'Month' },
 ]
 const SECONDARY_OPTIONS = [{ key: 'none', label: '(None)' }, ...GROUP_OPTIONS]
+
+const STATUS_OPTIONS = [
+  { key: 'completed', label: 'Completed' },
+  { key: 'running',   label: 'Running' },
+  { key: 'all',       label: 'All entries' },
+]
 
 const pad = n => String(n).padStart(2, '0')
 const clamp = (n, lo, hi) => Math.min(Math.max(n, lo), hi)
@@ -98,34 +104,10 @@ function flatGroup(entries, by) {
   return Array.from(map.values()).sort((a, b) => b.seconds - a.seconds)
 }
 
-// Two-level nest. Returns groups with .children (sub-groups by `then`).
 function nestGroup(entries, by, then) {
   const top = flatGroup(entries, by)
   if (then === 'none') return top.map(g => ({ ...g, children: null }))
   return top.map(g => ({ ...g, children: flatGroup(g.entries, then) }))
-}
-
-function BarChart({ data }) {
-  const max = Math.max(...data.map(d => d.seconds), 1)
-  if (!data.length) return <p className="text-sm text-slate-400 py-4">No data for this period</p>
-  return (
-    <div className="space-y-2.5">
-      {data.map((d, i) => (
-        <div key={i} className="flex items-center gap-3">
-          <div className="w-28 text-right text-xs text-slate-500 truncate shrink-0">{d.label}</div>
-          <div className="flex-1 h-5 bg-slate-100 rounded-full overflow-hidden">
-            <div
-              className="h-full rounded-full transition-all duration-500"
-              style={{ width: `${Math.max((d.seconds / max) * 100, 2)}%`, backgroundColor: d.color || '#DA70D6' }}
-            />
-          </div>
-          <div className="w-20 text-xs font-mono text-slate-600 text-right shrink-0">
-            {formatDuration(d.seconds)}
-          </div>
-        </div>
-      ))}
-    </div>
-  )
 }
 
 function DonutChart({ segments, total }) {
@@ -212,21 +194,34 @@ function DurationCell({ entry, canEdit, onSaved }) {
 
 export default function Reports() {
   const { isManager } = useAuth()
-  const { projects }  = useData()
+  const { projects, clients } = useData()
   const [tab, setTab] = useState('summary')
 
   const initialFrom = startOfWeek(new Date(), WEEK_OPT)
   const initialTo   = endOfWeek(new Date(), WEEK_OPT)
   const [range, setRange] = useState({ from: initialFrom, to: initialTo })
-  const [filterProject, setFilterProject] = useState('')
-  const [filterUser, setFilterUser]       = useState('')
-  const [groupBy, setGroupBy]             = useState('project')
-  const [secondaryBy, setSecondaryBy]     = useState('none')
-  const [expanded, setExpanded]           = useState(() => new Set())
-  const [entries, setEntries]             = useState([])
-  const [users, setUsers]                 = useState([])
-  const [loading, setLoading]             = useState(false)
-  const [weekRef, setWeekRef]             = useState(new Date())
+
+  // Applied filters drive the query. Staged filters mirror UI state on
+  // Summary until the user clicks Apply.
+  const [filterProject,     setFilterProject]     = useState('')
+  const [filterUser,        setFilterUser]        = useState('')
+  const [filterClient,      setFilterClient]      = useState('')
+  const [filterDescription, setFilterDescription] = useState('')
+  const [filterStatus,      setFilterStatus]      = useState('completed')
+
+  const [stagedProject,     setStagedProject]     = useState('')
+  const [stagedUser,        setStagedUser]        = useState('')
+  const [stagedClient,      setStagedClient]      = useState('')
+  const [stagedDescription, setStagedDescription] = useState('')
+  const [stagedStatus,      setStagedStatus]      = useState('completed')
+
+  const [groupBy, setGroupBy]         = useState('project')
+  const [secondaryBy, setSecondaryBy] = useState('none')
+  const [expanded, setExpanded]       = useState(() => new Set())
+  const [entries, setEntries]         = useState([])
+  const [users, setUsers]             = useState([])
+  const [loading, setLoading]         = useState(false)
+  const [weekRef, setWeekRef]         = useState(new Date())
 
   useEffect(() => { if (isManager) fetchUsers() }, [isManager])
 
@@ -238,23 +233,29 @@ export default function Reports() {
       const endISO   = endOfDay(range.to ?? range.from).toISOString()
       let q = supabase
         .from('time_entries')
-        .select(`*, project:projects(id, name, color, client:clients!projects_client_id_fkey(id, name)), user:profiles(id, full_name, email)`)
-        .eq('is_running', false)
+        .select(`*, project:projects(id, name, color, client_id, client:clients!projects_client_id_fkey(id, name)), user:profiles(id, full_name, email)`)
         .gte('start_time', startISO)
         .lte('start_time', endISO)
         .order('start_time', { ascending: false })
+      if (filterStatus === 'completed')    q = q.eq('is_running', false)
+      else if (filterStatus === 'running') q = q.eq('is_running', true)
       if (filterProject) q = q.eq('project_id', filterProject)
       if (filterUser)    q = q.eq('user_id', filterUser)
+      if (filterDescription.trim()) q = q.ilike('description', `%${filterDescription.trim()}%`)
       const { data, error } = await q
       if (error) throw error
-      setEntries(data ?? [])
+      // Client filter is applied here so we can keep the query flat.
+      const filtered = filterClient
+        ? (data ?? []).filter(e => e.project?.client_id === filterClient)
+        : (data ?? [])
+      setEntries(filtered)
     } catch (err) {
       console.error('[Reports] fetchEntries error:', err)
       setEntries([])
     } finally {
       setLoading(false)
     }
-  }, [range, filterProject, filterUser])
+  }, [range, filterProject, filterUser, filterClient, filterDescription, filterStatus])
 
   useEffect(() => { fetchEntries() }, [fetchEntries])
 
@@ -262,6 +263,27 @@ export default function Reports() {
     const { data } = await supabase.from('profiles')
       .select('id, full_name, email').neq('role', 'client').order('full_name')
     setUsers(data ?? [])
+  }
+
+  function applyFilters() {
+    setFilterProject(stagedProject)
+    setFilterUser(stagedUser)
+    setFilterClient(stagedClient)
+    setFilterDescription(stagedDescription)
+    setFilterStatus(stagedStatus)
+  }
+
+  function resetFilters() {
+    setStagedProject('')
+    setStagedUser('')
+    setStagedClient('')
+    setStagedDescription('')
+    setStagedStatus('completed')
+    setFilterProject('')
+    setFilterUser('')
+    setFilterClient('')
+    setFilterDescription('')
+    setFilterStatus('completed')
   }
 
   async function handleExport() {
@@ -273,47 +295,26 @@ export default function Reports() {
     } catch { toast.error('Export failed') }
   }
 
-  const totalSecs      = entries.reduce((s, e) => s + (e.duration ?? 0), 0)
-  const uniqueProjects = new Set(entries.filter(e => e.project_id).map(e => e.project_id)).size
+  const totalSecs = entries.reduce((s, e) => s + (e.duration ?? 0), 0)
 
-  // Primary-group flat data for the bar chart + donut (Summary tab).
   const primaryGroups = useMemo(() => {
     const flat = flatGroup(entries, groupBy)
-    // Ensure every segment has a color (fall back to chart palette).
     return flat.map((g, i) => ({
       ...g,
-      label: g.label,
       color: g.color || CHART_COLORS[i % CHART_COLORS.length],
     }))
   }, [entries, groupBy])
 
-  // Two-level nested grouping for the list at the bottom (Summary tab).
   const nested = useMemo(() => {
     const top = nestGroup(entries, groupBy, secondaryBy)
     return top.map((g, i) => ({ ...g, color: g.color || CHART_COLORS[i % CHART_COLORS.length] }))
   }, [entries, groupBy, secondaryBy])
 
-  // Single grouping for the Detailed tab.
   const detailed = useMemo(() => flatGroup(entries, groupBy), [entries, groupBy])
 
-  // Per-day project breakdown for the Summary daily bar chart.
-  const summaryDays = useMemo(
-    () => (range?.from ? eachDayOfInterval({ start: range.from, end: range.to ?? range.from }) : []),
-    [range]
-  )
-  const summaryPerDay = useMemo(() => summaryDays.map(day => {
-    const dayEntries = entries.filter(e => isSameDay(new Date(e.start_time), day))
-    const projMap = {}
-    for (const e of dayEntries) {
-      const p = e.project
-        ? { id: e.project.id, name: e.project.name, color: e.project.color || CHART_COLORS[0] }
-        : { id: '_none', name: 'Without project', color: '#94a3b8' }
-      if (!projMap[p.id]) projMap[p.id] = { ...p, seconds: 0 }
-      projMap[p.id].seconds += e.duration ?? 0
-    }
-    const segments = Object.values(projMap)
-    return { total: segments.reduce((s, x) => s + x.seconds, 0), segments }
-  }), [entries, summaryDays])
+  // Adaptive bucketing for the Summary chart — day buckets up to ~31 days,
+  // week buckets up to ~6 months, month buckets beyond.
+  const chartBuckets = useMemo(() => buildBuckets(entries, range), [entries, range])
 
   const weekStart = startOfWeek(weekRef, WEEK_OPT)
   const weekEnd   = endOfWeek(weekRef, WEEK_OPT)
@@ -333,90 +334,154 @@ export default function Reports() {
     })
   }
 
-  function expandAll(keys)   { setExpanded(new Set(keys)) }
-  function collapseAll()     { setExpanded(new Set()) }
+  function expandAll(keys) { setExpanded(new Set(keys)) }
+  function collapseAll()   { setExpanded(new Set()) }
 
-  const groupBar = (
-    <div className="flex items-center gap-2">
-      <label className="text-xs font-medium text-slate-500 uppercase tracking-wide">Group by</label>
-      <select
-        value={groupBy}
-        onChange={e => { setGroupBy(e.target.value); setExpanded(new Set()) }}
-        className="border border-slate-200 rounded-lg px-3 py-2 text-sm text-slate-700 outline-none focus:ring-2 focus:ring-orchid-500 bg-white"
-      >
-        {GROUP_OPTIONS.map(o => <option key={o.key} value={o.key}>{o.label}</option>)}
-      </select>
-      {tab === 'summary' && (
-        <>
-          <label className="text-xs font-medium text-slate-500 uppercase tracking-wide ml-1">then by</label>
-          <select
-            value={secondaryBy}
-            onChange={e => { setSecondaryBy(e.target.value); setExpanded(new Set()) }}
-            className="border border-slate-200 rounded-lg px-3 py-2 text-sm text-slate-700 outline-none focus:ring-2 focus:ring-orchid-500 bg-white"
-          >
-            {SECONDARY_OPTIONS
-              .filter(o => o.key !== groupBy)
-              .map(o => <option key={o.key} value={o.key}>{o.label}</option>)}
-          </select>
-        </>
+  const primaryLabel = GROUP_OPTIONS.find(o => o.key === groupBy)?.label ?? 'Group'
+
+  const filtersDirty =
+    stagedProject     !== filterProject ||
+    stagedUser        !== filterUser ||
+    stagedClient      !== filterClient ||
+    stagedDescription !== filterDescription ||
+    stagedStatus      !== filterStatus
+
+  const summaryFilterBar = (
+    <div className="bg-white rounded-xl border border-slate-200 p-4 mb-5 flex flex-wrap items-end gap-3">
+      {isManager && (
+        <FilterSelect
+          label="Team / User"
+          value={stagedUser}
+          onChange={setStagedUser}
+          options={[{ value: '', label: 'All users' }, ...users.map(u => ({ value: u.id, label: u.full_name || u.email }))]}
+        />
       )}
+      <FilterSelect
+        label="Client"
+        value={stagedClient}
+        onChange={setStagedClient}
+        options={[{ value: '', label: 'All clients' }, ...clients.map(c => ({ value: c.id, label: c.name }))]}
+      />
+      <FilterSelect
+        label="Project"
+        value={stagedProject}
+        onChange={setStagedProject}
+        options={[{ value: '', label: 'All projects' }, ...projects.map(p => ({ value: p.id, label: p.name }))]}
+      />
+      <div className="flex flex-col gap-1">
+        <label className="text-[10px] font-semibold text-slate-500 uppercase tracking-wide">Description</label>
+        <input
+          type="text"
+          value={stagedDescription}
+          onChange={e => setStagedDescription(e.target.value)}
+          onKeyDown={e => { if (e.key === 'Enter') applyFilters() }}
+          placeholder="Contains…"
+          className="border border-slate-200 rounded-lg px-3 py-2 text-sm text-slate-700 outline-none focus:ring-2 focus:ring-orchid-500 bg-white w-48"
+        />
+      </div>
+      <FilterSelect
+        label="Status"
+        value={stagedStatus}
+        onChange={setStagedStatus}
+        options={STATUS_OPTIONS.map(s => ({ value: s.key, label: s.label }))}
+      />
+      <div className="flex items-center gap-2 ml-auto">
+        {filtersDirty && (
+          <button
+            onClick={resetFilters}
+            className="text-xs font-medium text-slate-500 hover:text-orchid-700 px-2 py-1"
+          >Reset</button>
+        )}
+        <button
+          onClick={applyFilters}
+          disabled={!filtersDirty}
+          className="px-4 py-2 text-sm font-semibold rounded-lg bg-orchid-600 hover:bg-orchid-700 disabled:opacity-40 disabled:cursor-not-allowed text-white transition-colors"
+        >
+          Apply filter
+        </button>
+      </div>
     </div>
   )
 
-  const filterBar = (
+  const groupByRow = (
     <div className="bg-white rounded-xl border border-slate-200 p-4 mb-5 flex flex-wrap items-center gap-3">
-      <DateRangePicker
-        from={range.from}
-        to={range.to}
-        onChange={setRange}
-      />
-      <select value={filterProject} onChange={e => setFilterProject(e.target.value)}
+      <div className="flex items-center gap-2">
+        <label className="text-xs font-medium text-slate-500 uppercase tracking-wide">Group by</label>
+        <select
+          value={groupBy}
+          onChange={e => { setGroupBy(e.target.value); setExpanded(new Set()) }}
+          className="border border-slate-200 rounded-lg px-3 py-2 text-sm text-slate-700 outline-none focus:ring-2 focus:ring-orchid-500 bg-white"
+        >
+          {GROUP_OPTIONS.map(o => <option key={o.key} value={o.key}>{o.label}</option>)}
+        </select>
+      </div>
+      <div className="flex items-center gap-2">
+        <label className="text-xs font-medium text-slate-500 uppercase tracking-wide">then by</label>
+        <select
+          value={secondaryBy}
+          onChange={e => { setSecondaryBy(e.target.value); setExpanded(new Set()) }}
+          className="border border-slate-200 rounded-lg px-3 py-2 text-sm text-slate-700 outline-none focus:ring-2 focus:ring-orchid-500 bg-white"
+        >
+          {SECONDARY_OPTIONS
+            .filter(o => o.key !== groupBy)
+            .map(o => <option key={o.key} value={o.key}>{o.label}</option>)}
+        </select>
+      </div>
+    </div>
+  )
+
+  // Simpler filter bar for the Detailed tab — immediate, no Apply step.
+  const detailedFilterBar = (
+    <div className="bg-white rounded-xl border border-slate-200 p-4 mb-5 flex flex-wrap items-center gap-3">
+      <select
+        value={filterProject}
+        onChange={e => { setFilterProject(e.target.value); setStagedProject(e.target.value) }}
         className="border border-slate-200 rounded-lg px-3 py-2 text-sm text-slate-600 outline-none focus:ring-2 focus:ring-orchid-500 bg-white"
       >
         <option value="">All projects</option>
         {projects.map(p => <option key={p.id} value={p.id}>{p.name}</option>)}
       </select>
       {isManager && (
-        <select value={filterUser} onChange={e => setFilterUser(e.target.value)}
+        <select
+          value={filterUser}
+          onChange={e => { setFilterUser(e.target.value); setStagedUser(e.target.value) }}
           className="border border-slate-200 rounded-lg px-3 py-2 text-sm text-slate-600 outline-none focus:ring-2 focus:ring-orchid-500 bg-white"
         >
           <option value="">All users</option>
           {users.map(u => <option key={u.id} value={u.id}>{u.full_name || u.email}</option>)}
         </select>
       )}
-      {(tab === 'summary' || tab === 'detailed') && (
-        <div className="ml-auto">{groupBar}</div>
-      )}
+      <div className="ml-auto flex items-center gap-2">
+        <label className="text-xs font-medium text-slate-500 uppercase tracking-wide">Group by</label>
+        <select
+          value={groupBy}
+          onChange={e => { setGroupBy(e.target.value); setExpanded(new Set()) }}
+          className="border border-slate-200 rounded-lg px-3 py-2 text-sm text-slate-700 outline-none focus:ring-2 focus:ring-orchid-500 bg-white"
+        >
+          {GROUP_OPTIONS.map(o => <option key={o.key} value={o.key}>{o.label}</option>)}
+        </select>
+      </div>
     </div>
   )
-
-  const statCards = (
-    <div className="grid grid-cols-3 gap-4 mb-5">
-      {[
-        { label: 'Total time', value: formatDuration(totalSecs), mono: true },
-        { label: 'Entries',    value: entries.length },
-        { label: 'Projects',   value: uniqueProjects },
-      ].map(({ label, value, mono }) => (
-        <div key={label} className="bg-white rounded-xl border border-slate-200 px-5 py-4">
-          <p className="text-xs text-slate-500 font-medium uppercase tracking-wide">{label}</p>
-          <p className={`text-2xl font-bold text-slate-800 mt-1 ${mono ? 'font-mono' : ''}`}>{value}</p>
-        </div>
-      ))}
-    </div>
-  )
-
-  const primaryLabel = GROUP_OPTIONS.find(o => o.key === groupBy)?.label ?? 'Group'
 
   return (
     <div>
-      <div className="flex items-center justify-between mb-6">
+      <div className="flex items-center justify-between mb-6 gap-3 flex-wrap">
         <h1 className="text-2xl font-bold text-slate-800">Reports</h1>
-        <button onClick={handleExport}
-          className="flex items-center gap-2 bg-emerald-600 hover:bg-emerald-700 text-white px-4 py-2 rounded-lg text-sm font-medium transition-colors"
-        >
-          <Download size={16} />
-          Export Excel
-        </button>
+        <div className="flex items-center gap-2">
+          <DateRangePicker
+            from={range.from}
+            to={range.to}
+            onChange={setRange}
+            align="right"
+          />
+          <button onClick={handleExport}
+            className="flex items-center gap-2 bg-emerald-600 hover:bg-emerald-700 text-white px-4 py-2 rounded-lg text-sm font-medium transition-colors"
+          >
+            <Download size={16} />
+            Export Excel
+          </button>
+        </div>
       </div>
 
       <div className="flex gap-1 mb-5 bg-slate-100 rounded-xl p-1 w-fit">
@@ -427,7 +492,13 @@ export default function Reports() {
         ))}
       </div>
 
-      {filterBar}
+      {tab === 'summary' && (
+        <>
+          {summaryFilterBar}
+          {groupByRow}
+        </>
+      )}
+      {tab === 'detailed' && detailedFilterBar}
 
       {loading ? (
         <div className="flex items-center justify-center py-16">
@@ -437,107 +508,115 @@ export default function Reports() {
         <>
           {tab === 'summary' && (
             <div className="space-y-5">
-              {statCards}
-              <div className="bg-white rounded-xl border border-slate-200 p-5">
-                <h3 className="text-sm font-semibold text-slate-700 mb-1">Tracked time</h3>
-                <StackedDayBars days={summaryDays} perDay={summaryPerDay} labels="auto" />
-              </div>
-              <div className="grid grid-cols-1 lg:grid-cols-3 gap-5">
-                <div className="lg:col-span-2 bg-white rounded-xl border border-slate-200 p-5">
-                  <h3 className="text-sm font-semibold text-slate-700 mb-4">Time by {primaryLabel.toLowerCase()}</h3>
-                  <BarChart data={primaryGroups} />
+              <div className="rounded-xl overflow-hidden border border-slate-200 shadow-sm">
+                <div className="bg-slate-900 px-5 py-3 flex items-center justify-between">
+                  <span className="text-xs uppercase tracking-wide text-slate-400 font-semibold">Total</span>
+                  <span className="text-xl font-bold font-mono tabular-nums text-white">
+                    {formatDuration(totalSecs)}
+                  </span>
                 </div>
-                <div className="bg-white rounded-xl border border-slate-200 p-5 flex flex-col items-center justify-center">
-                  <h3 className="text-sm font-semibold text-slate-700 mb-4 self-start">Breakdown</h3>
-                  <DonutChart segments={primaryGroups} total={totalSecs} />
-                  <div className="mt-3 space-y-1 w-full">
-                    {primaryGroups.slice(0, 5).map((d, i) => (
-                      <div key={i} className="flex items-center gap-2 text-xs text-slate-600">
-                        <span className="w-2.5 h-2.5 rounded-full shrink-0" style={{ backgroundColor: d.color }} />
-                        <span className="flex-1 truncate">{d.label}</span>
-                        <span className="font-mono text-slate-500">{totalSecs ? Math.round((d.seconds / totalSecs) * 100) : 0}%</span>
-                      </div>
-                    ))}
-                  </div>
+                <div className="bg-white p-5">
+                  <StackedDayBars buckets={chartBuckets} labels="auto" />
                 </div>
               </div>
 
-              <div className="bg-white rounded-xl border border-slate-200 overflow-hidden">
-                <div className="flex items-center justify-between px-5 py-3 border-b border-slate-100">
-                  <h3 className="text-sm font-semibold text-slate-700">
-                    Grouped totals
-                    <span className="ml-2 text-xs font-medium text-slate-400">
-                      {primaryLabel}
-                      {secondaryBy !== 'none' && ` → ${SECONDARY_OPTIONS.find(o => o.key === secondaryBy)?.label}`}
-                    </span>
+              <div className="grid grid-cols-1 lg:grid-cols-5 gap-5">
+                <div className="lg:col-span-2 bg-white rounded-xl border border-slate-200 p-5 flex flex-col items-center">
+                  <h3 className="text-sm font-semibold text-slate-700 mb-4 self-start">
+                    Breakdown by {primaryLabel.toLowerCase()}
                   </h3>
-                  {secondaryBy !== 'none' && nested.length > 0 && (
-                    <div className="flex gap-2">
-                      <button
-                        onClick={() => expandAll(nested.map(g => g.key))}
-                        className="text-xs font-medium text-slate-500 hover:text-orchid-700 transition-colors"
-                      >Expand all</button>
-                      <span className="text-xs text-slate-300">·</span>
-                      <button
-                        onClick={collapseAll}
-                        className="text-xs font-medium text-slate-500 hover:text-orchid-700 transition-colors"
-                      >Collapse all</button>
-                    </div>
-                  )}
-                </div>
-                {nested.length === 0 && (
-                  <p className="text-sm text-slate-400 text-center py-10">No entries for this period</p>
-                )}
-                <div className="divide-y divide-slate-100">
-                  {nested.map(g => {
-                    const hasChildren = !!g.children
-                    const isOpen = expanded.has(g.key)
-                    return (
-                      <div key={g.key}>
-                        <button
-                          onClick={() => hasChildren && toggleGroup(g.key)}
-                          className={`w-full flex items-center gap-3 px-5 py-3 text-left ${hasChildren ? 'hover:bg-slate-50' : 'cursor-default'}`}
-                        >
-                          {hasChildren ? (
-                            <ChevronDown
-                              size={14}
-                              className={`text-slate-400 transition-transform shrink-0 ${isOpen ? '' : '-rotate-90'}`}
-                            />
-                          ) : <span className="w-3.5 shrink-0" />}
-                          <span
-                            className="w-2.5 h-2.5 rounded-full shrink-0"
-                            style={{ backgroundColor: g.color }}
-                          />
-                          <span className="text-sm text-slate-800 truncate flex-1">{g.label}</span>
-                          <span className="text-xs text-slate-400 shrink-0 font-mono">
-                            {totalSecs ? ((g.seconds / totalSecs) * 100).toFixed(1) : 0}%
-                          </span>
-                          <span className="font-mono text-sm font-semibold text-slate-800 w-24 text-right shrink-0 tabular-nums">
-                            {formatDuration(g.seconds)}
-                          </span>
-                        </button>
-                        {hasChildren && isOpen && (
-                          <div className="bg-slate-50/50">
-                            {g.children.map((c, i) => (
-                              <div key={c.key} className="flex items-center gap-3 pl-12 pr-5 py-2 border-t border-slate-100">
-                                <span
-                                  className="w-2 h-2 rounded-full shrink-0"
-                                  style={{ backgroundColor: c.color || CHART_COLORS[i % CHART_COLORS.length] }}
-                                />
-                                <span className="text-sm text-slate-600 truncate flex-1">{c.label}</span>
-                                <span className="text-xs text-slate-400 shrink-0 font-mono">
-                                  {g.seconds ? ((c.seconds / g.seconds) * 100).toFixed(1) : 0}%
-                                </span>
-                                <span className="font-mono text-sm text-slate-700 w-24 text-right shrink-0 tabular-nums">
-                                  {formatDuration(c.seconds)}
-                                </span>
-                              </div>
-                            ))}
-                          </div>
-                        )}
+                  <DonutChart segments={primaryGroups} total={totalSecs} />
+                  <div className="mt-4 space-y-1.5 w-full">
+                    {primaryGroups.slice(0, 8).map((d, i) => (
+                      <div key={i} className="flex items-center gap-2 text-xs text-slate-600">
+                        <span className="w-2.5 h-2.5 rounded-full shrink-0" style={{ backgroundColor: d.color }} />
+                        <span className="flex-1 truncate">{d.label}</span>
+                        <span className="font-mono text-slate-500 shrink-0">{totalSecs ? Math.round((d.seconds / totalSecs) * 100) : 0}%</span>
                       </div>
-                    )
-                  })}
+                    ))}
+                    {!primaryGroups.length && (
+                      <p className="text-xs text-slate-400 text-center py-2">No data</p>
+                    )}
+                  </div>
+                </div>
+
+                <div className="lg:col-span-3 bg-white rounded-xl border border-slate-200 overflow-hidden">
+                  <div className="flex items-center justify-between px-5 py-3 border-b border-slate-100">
+                    <h3 className="text-sm font-semibold text-slate-700">
+                      Grouped totals
+                      <span className="ml-2 text-xs font-medium text-slate-400">
+                        {primaryLabel}
+                        {secondaryBy !== 'none' && ` → ${SECONDARY_OPTIONS.find(o => o.key === secondaryBy)?.label}`}
+                      </span>
+                    </h3>
+                    {secondaryBy !== 'none' && nested.length > 0 && (
+                      <div className="flex gap-2">
+                        <button
+                          onClick={() => expandAll(nested.map(g => g.key))}
+                          className="text-xs font-medium text-slate-500 hover:text-orchid-700 transition-colors"
+                        >Expand all</button>
+                        <span className="text-xs text-slate-300">·</span>
+                        <button
+                          onClick={collapseAll}
+                          className="text-xs font-medium text-slate-500 hover:text-orchid-700 transition-colors"
+                        >Collapse all</button>
+                      </div>
+                    )}
+                  </div>
+                  {nested.length === 0 && (
+                    <p className="text-sm text-slate-400 text-center py-10">No entries for this period</p>
+                  )}
+                  <div className="divide-y divide-slate-100 max-h-[28rem] overflow-y-auto">
+                    {nested.map(g => {
+                      const hasChildren = !!g.children
+                      const isOpen = expanded.has(g.key)
+                      return (
+                        <div key={g.key}>
+                          <button
+                            onClick={() => hasChildren && toggleGroup(g.key)}
+                            className={`w-full flex items-center gap-3 px-5 py-3 text-left ${hasChildren ? 'hover:bg-slate-50' : 'cursor-default'}`}
+                          >
+                            {hasChildren ? (
+                              <ChevronDown
+                                size={14}
+                                className={`text-slate-400 transition-transform shrink-0 ${isOpen ? '' : '-rotate-90'}`}
+                              />
+                            ) : <span className="w-3.5 shrink-0" />}
+                            <span
+                              className="w-2.5 h-2.5 rounded-full shrink-0"
+                              style={{ backgroundColor: g.color }}
+                            />
+                            <span className="text-sm text-slate-800 truncate flex-1">{g.label}</span>
+                            <span className="text-xs text-slate-400 shrink-0 font-mono w-10 text-right">
+                              {totalSecs ? ((g.seconds / totalSecs) * 100).toFixed(1) : 0}%
+                            </span>
+                            <span className="font-mono text-sm font-semibold text-slate-800 w-24 text-right shrink-0 tabular-nums">
+                              {formatDuration(g.seconds)}
+                            </span>
+                          </button>
+                          {hasChildren && isOpen && (
+                            <div className="bg-slate-50/50">
+                              {g.children.map((c, i) => (
+                                <div key={c.key} className="flex items-center gap-3 pl-12 pr-5 py-2 border-t border-slate-100">
+                                  <span
+                                    className="w-2 h-2 rounded-full shrink-0"
+                                    style={{ backgroundColor: c.color || CHART_COLORS[i % CHART_COLORS.length] }}
+                                  />
+                                  <span className="text-sm text-slate-600 truncate flex-1">{c.label}</span>
+                                  <span className="text-xs text-slate-400 shrink-0 font-mono w-10 text-right">
+                                    {g.seconds ? ((c.seconds / g.seconds) * 100).toFixed(1) : 0}%
+                                  </span>
+                                  <span className="font-mono text-sm text-slate-700 w-24 text-right shrink-0 tabular-nums">
+                                    {formatDuration(c.seconds)}
+                                  </span>
+                                </div>
+                              ))}
+                            </div>
+                          )}
+                        </div>
+                      )
+                    })}
+                  </div>
                 </div>
               </div>
             </div>
@@ -545,7 +624,6 @@ export default function Reports() {
 
           {tab === 'detailed' && (
             <div className="space-y-5">
-              {statCards}
               {detailed.length > 0 && (
                 <div className="flex justify-end gap-2">
                   <button
@@ -683,6 +761,21 @@ export default function Reports() {
           )}
         </>
       )}
+    </div>
+  )
+}
+
+function FilterSelect({ label, value, onChange, options }) {
+  return (
+    <div className="flex flex-col gap-1">
+      <label className="text-[10px] font-semibold text-slate-500 uppercase tracking-wide">{label}</label>
+      <select
+        value={value}
+        onChange={e => onChange(e.target.value)}
+        className="border border-slate-200 rounded-lg px-3 py-2 text-sm text-slate-700 outline-none focus:ring-2 focus:ring-orchid-500 bg-white min-w-[10rem]"
+      >
+        {options.map(o => <option key={o.value} value={o.value}>{o.label}</option>)}
+      </select>
     </div>
   )
 }

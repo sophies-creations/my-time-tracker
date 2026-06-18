@@ -1,14 +1,14 @@
 import { useState, useEffect, useMemo, useCallback } from 'react'
 import {
   format, startOfWeek, endOfWeek,
-  startOfDay, endOfDay, eachDayOfInterval, isSameDay, formatDistanceToNowStrict,
+  startOfDay, endOfDay, isSameDay, formatDistanceToNowStrict,
 } from 'date-fns'
 import { Square } from 'lucide-react'
 import { supabase } from '../lib/supabase'
 import { useAuth } from '../contexts/AuthContext'
 import { formatDuration } from '../utils/formatters'
 import DateRangePicker from '../components/DateRangePicker'
-import StackedDayBars from '../components/StackedDayBars'
+import StackedDayBars, { buildBuckets } from '../components/StackedDayBars'
 import toast from 'react-hot-toast'
 
 const WEEK_OPT  = { weekStartsOn: 1 }
@@ -178,20 +178,8 @@ export default function Dashboard() {
     }, {})
   ).sort((a, b) => b.seconds - a.seconds), [entries])
 
-  const days = useMemo(
-    () => eachDayOfInterval({ start: range.from, end: range.to ?? range.from }),
-    [range]
-  )
-  const perDay = useMemo(() => days.map(day => {
-    const dayEntries = entries.filter(e => isSameDay(new Date(e.start_time), day))
-    const segs = Object.values(dayEntries.reduce((acc, e) => {
-      const p = projOf(e)
-      if (!acc[p.id]) acc[p.id] = { ...p, seconds: 0 }
-      acc[p.id].seconds += e.duration ?? 0
-      return acc
-    }, {}))
-    return { total: segs.reduce((s, x) => s + x.seconds, 0), segments: segs }
-  }), [entries, days])
+  const chartBuckets = useMemo(() => buildBuckets(entries, range), [entries, range])
+
   const topActivities = useMemo(() => Object.values(
     entries.reduce((acc, e) => {
       const p = projOf(e)
@@ -279,7 +267,7 @@ export default function Dashboard() {
           <div className="grid grid-cols-1 lg:grid-cols-3 gap-5">
             <div className="lg:col-span-2 bg-white rounded-xl border border-slate-200 p-5">
               <h3 className="text-sm font-semibold text-slate-700 mb-1">Tracked time across {rangeLabel}</h3>
-              <StackedDayBars days={days} perDay={perDay} labels={false} />
+              <StackedDayBars buckets={chartBuckets} labels={false} />
             </div>
             <div className="bg-white rounded-xl border border-slate-200 p-5">
               <h3 className="text-sm font-semibold text-slate-700 mb-3">Most tracked activities</h3>
