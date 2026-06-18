@@ -20,18 +20,18 @@ function projOf(e) {
 
 function StackedColumns({ days, perDay, max }) {
   return (
-    <div className="flex items-end gap-2 h-56 pt-8">
+    <div className="flex items-end gap-2 h-56 pt-4">
       {days.map((day, i) => {
         const info = perDay[i]
         const hPct = max ? (info.total / max) * 100 : 0
+        const dayLabel = format(day, 'EEE, MMM d')
         return (
           <div key={i} className="flex-1 flex flex-col items-center min-w-0">
-            <div className="relative w-full flex flex-col justify-end" style={{ height: '11rem' }}>
-              {info.total > 0 && (
-                <span className="absolute -top-5 left-1/2 -translate-x-1/2 text-[10px] font-mono text-slate-500 whitespace-nowrap">
-                  {formatDuration(info.total)}
-                </span>
-              )}
+            <div
+              className="relative w-full flex flex-col justify-end"
+              style={{ height: '11rem' }}
+              title={info.total > 0 ? `${dayLabel}: ${formatDuration(info.total)}` : dayLabel}
+            >
               <div className="w-full rounded-t-md overflow-hidden flex flex-col-reverse" style={{ height: `${hPct}%` }}>
                 {info.segments.map((s, j) => (
                   <div key={j} title={`${s.name}: ${formatDuration(s.seconds)}`}
@@ -227,9 +227,8 @@ export default function Dashboard() {
   const topActivities = useMemo(() => Object.values(
     entries.reduce((acc, e) => {
       const p = projOf(e)
-      const key = `${e.description || ''}|${p.id}`
-      if (!acc[key]) acc[key] = { description: e.description || '(no description)', project: p, seconds: 0 }
-      acc[key].seconds += e.duration ?? 0
+      if (!acc[p.id]) acc[p.id] = { project: p, seconds: 0 }
+      acc[p.id].seconds += e.duration ?? 0
       return acc
     }, {})
   ).sort((a, b) => b.seconds - a.seconds).slice(0, 10), [entries])
@@ -318,12 +317,9 @@ export default function Dashboard() {
               <h3 className="text-sm font-semibold text-slate-700 mb-3">Most tracked activities</h3>
               <div className="space-y-2.5 max-h-72 overflow-y-auto pr-1">
                 {topActivities.map((a, i) => (
-                  <div key={i} className="flex items-start justify-between gap-3 text-sm">
-                    <div className="min-w-0">
-                      <p className="truncate" style={{ color: a.project.color }}>● {a.project.name}</p>
-                      <p className="text-xs text-slate-500 truncate">{a.description}</p>
-                    </div>
-                    <span className="font-mono text-xs text-slate-500 shrink-0 pt-0.5">{formatDuration(a.seconds)}</span>
+                  <div key={i} className="flex items-center justify-between gap-3 text-sm">
+                    <p className="truncate min-w-0" style={{ color: a.project.color }}>● {a.project.name}</p>
+                    <span className="font-mono text-xs text-slate-500 shrink-0">{formatDuration(a.seconds)}</span>
                   </div>
                 ))}
                 {!topActivities.length && <p className="text-xs text-slate-300 py-6 text-center">Nothing tracked this period</p>}
