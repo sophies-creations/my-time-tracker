@@ -110,7 +110,7 @@ function StackRow({ group, isOpen, onToggle, onResume }) {
             style={{ backgroundColor: sample.project?.color ?? '#cbd5e1' }}
           />
           {sample.project?.name ?? <span className="text-slate-400">No project</span>}
-          <span className="inline-flex items-center justify-center min-w-[1.25rem] h-5 px-1.5 rounded-full bg-orchid-600 text-white text-[10px] font-bold tabular-nums">
+          <span className="inline-flex items-center justify-center min-w-[1.25rem] h-5 px-1.5 rounded-full bg-orchid-100 text-orchid-800 text-[10px] font-bold tabular-nums">
             {group.entries.length}
           </span>
         </p>

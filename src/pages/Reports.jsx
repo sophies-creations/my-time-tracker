@@ -290,7 +290,20 @@ export default function Reports() {
     try {
       const fromStr = format(range.from, 'yyyy-MM-dd')
       const toStr   = format(range.to ?? range.from, 'yyyy-MM-dd')
-      await exportToExcel(entries, `TimeReport_${fromStr}_to_${toStr}`)
+      if (tab === 'summary') {
+        const secondaryLabel = secondaryBy === 'none'
+          ? null
+          : SECONDARY_OPTIONS.find(o => o.key === secondaryBy)?.label
+        await exportToExcel(
+          { mode: 'summary', groups: nested, primaryLabel, secondaryLabel, totalSecs },
+          `TimeReport_Summary_${fromStr}_to_${toStr}`,
+        )
+      } else {
+        await exportToExcel(
+          { mode: 'detailed', entries },
+          `TimeReport_Detailed_${fromStr}_to_${toStr}`,
+        )
+      }
       toast.success('Excel file downloaded')
     } catch { toast.error('Export failed') }
   }
@@ -509,9 +522,9 @@ export default function Reports() {
           {tab === 'summary' && (
             <div className="space-y-5">
               <div className="rounded-xl overflow-hidden border border-slate-200 shadow-sm">
-                <div className="bg-slate-900 px-5 py-3 flex items-center justify-between">
-                  <span className="text-xs uppercase tracking-wide text-slate-400 font-semibold">Total</span>
-                  <span className="text-xl font-bold font-mono tabular-nums text-white">
+                <div className="bg-orchid-50/70 border-b border-orchid-100 px-5 py-3 flex items-center justify-between">
+                  <span className="text-xs uppercase tracking-wide text-orchid-700 font-semibold">Total</span>
+                  <span className="text-xl font-bold font-mono tabular-nums text-orchid-900">
                     {formatDuration(totalSecs)}
                   </span>
                 </div>

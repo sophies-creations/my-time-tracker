@@ -2,7 +2,7 @@ import { useState, useEffect } from 'react'
 import { NavLink } from 'react-router-dom'
 import {
   Clock, LayoutDashboard, BarChart2, CalendarDays,
-  FolderOpen, Users, Building2, ChevronsLeft, ChevronsRight,
+  FolderOpen, Users, Building2, Menu,
 } from 'lucide-react'
 import { useAuth } from '../contexts/AuthContext'
 
@@ -40,15 +40,27 @@ export default function Sidebar() {
       className={`${collapsed ? 'w-14' : 'w-56'} flex flex-col flex-shrink-0 transition-[width] duration-200`}
       style={{ backgroundColor: '#1e1a2e' }}
     >
-      {/* Logo */}
+      {/* Logo + hamburger toggle */}
       <div
-        className={`${collapsed ? 'px-2 justify-center' : 'px-5'} py-4 flex items-center gap-2.5`}
+        className={`${collapsed ? 'px-2 justify-center' : 'px-3'} py-4 flex items-center gap-2`}
         style={{ borderBottom: '1px solid #2d2647' }}
       >
-        <div className="w-8 h-8 bg-orchid-600 rounded-lg flex items-center justify-center flex-shrink-0">
-          <Clock size={15} className="text-white" />
-        </div>
-        {!collapsed && <span className="text-base font-bold text-white tracking-tight">TimeTrack</span>}
+        <button
+          onClick={() => setCollapsed(c => !c)}
+          title={collapsed ? 'Expand sidebar' : 'Collapse sidebar'}
+          aria-label={collapsed ? 'Expand sidebar' : 'Collapse sidebar'}
+          className="w-8 h-8 rounded-lg flex items-center justify-center text-slate-300 hover:bg-white/10 hover:text-white transition-colors flex-shrink-0"
+        >
+          <Menu size={16} />
+        </button>
+        {!collapsed && (
+          <>
+            <div className="w-8 h-8 bg-orchid-600 rounded-lg flex items-center justify-center flex-shrink-0">
+              <Clock size={15} className="text-white" />
+            </div>
+            <span className="text-base font-bold text-white tracking-tight">TimeTrack</span>
+          </>
+        )}
       </div>
 
       {/* Navigation */}
@@ -71,16 +83,6 @@ export default function Sidebar() {
           </NavLink>
         ))}
       </nav>
-
-      {/* Collapse toggle */}
-      <button
-        onClick={() => setCollapsed(c => !c)}
-        title={collapsed ? 'Expand sidebar' : 'Collapse sidebar'}
-        className={`m-2 p-2 rounded-lg text-slate-400 hover:bg-white/8 hover:text-white flex items-center ${collapsed ? 'justify-center' : 'gap-2'} text-xs transition-colors`}
-      >
-        {collapsed ? <ChevronsRight size={16} /> : <ChevronsLeft size={16} />}
-        {!collapsed && <span>Collapse</span>}
-      </button>
     </aside>
   )
 }

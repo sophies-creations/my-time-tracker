@@ -1,5 +1,5 @@
 import { useState, useEffect, useRef, useMemo } from 'react'
-import { Play, Square, DollarSign, ChevronDown, Plus, Star } from 'lucide-react'
+import { Play, Square, DollarSign, ChevronDown, Plus, Star, Search } from 'lucide-react'
 import { supabase } from '../lib/supabase'
 import { useAuth } from '../contexts/AuthContext'
 import { useData } from '../contexts/DataContext'
@@ -22,6 +22,8 @@ export default function TimerWidget() {
   const [projectId, setProjectId]     = useState('')
   const [billable, setBillable]       = useState(false)
   const [projectOpen, setProjectOpen] = useState(false)
+  const [projectSearch, setProjectSearch] = useState('')
+  const [showAllOthers, setShowAllOthers] = useState(false)
   const [newProjectName, setNewProjectName] = useState('')
   const [creatingProject, setCreatingProject] = useState(false)
 
@@ -185,6 +187,17 @@ export default function TimerWidget() {
     return { favorites: favs, others: oth }
   }, [projects, favoriteIds])
 
+  const searchedProjects = useMemo(() => {
+    const q = projectSearch.trim().toLowerCase()
+    if (!q) return []
+    return projects.filter(p => p.name.toLowerCase().includes(q))
+  }, [projects, projectSearch])
+
+  // When the picker closes, reset the search so the next open is fresh.
+  useEffect(() => {
+    if (!projectOpen) setProjectSearch('')
+  }, [projectOpen])
+
   const canStart = !!projectId
   const startTitle = running
     ? 'Stop the timer'
@@ -219,27 +232,81 @@ export default function TimerWidget() {
           <ChevronDown size={12} className="text-slate-400 flex-shrink-0" />
         </button>
         {projectOpen && (
-          <div className="absolute top-full left-0 mt-1 bg-white border border-slate-200 rounded-xl shadow-lg z-50 min-w-[14rem] max-h-72 overflow-y-auto py-1">
-            {favorites.length > 0 && (
-              <>
-                <p className="px-3 pt-1.5 pb-1 text-[10px] font-semibold text-slate-400 uppercase tracking-wide flex items-center gap-1">
-                  <Star size={9} className="text-amber-400" fill="currentColor" />
-                  Favorites
-                </p>
-                {favorites.map(p => (
-                  <ProjectRow key={p.id} project={p} selected={projectId === p.id} isFavorite
-                    onSelect={() => { setProjectId(p.id); setProjectOpen(false) }}
-                    onToggleFav={() => toggleFavorite(p.id)} />
-                ))}
-                <div className="border-t border-slate-100 my-1" />
-              </>
-            )}
-            {others.map(p => (
-              <ProjectRow key={p.id} project={p} selected={projectId === p.id} isFavorite={false}
-                onSelect={() => { setProjectId(p.id); setProjectOpen(false) }}
-                onToggleFav={() => toggleFavorite(p.id)} />
-            ))}
-            {!projects.length && <p className="px-3 py-2 text-xs text-slate-400">No projects yet</p>}
+          <div className="absolute top-full left-0 mt-1 bg-white border border-slate-200 rounded-xl shadow-lg z-50 w-72 py-1">
+            {/* Search — always at the top, searches all projects */}
+            <div className="px-2 pt-1 pb-1.5">
+              <div className="relative">
+                <Search size={12} className="absolute left-2.5 top-1/2 -translate-y-1/2 text-slate-400" />
+                <input
+                  autoFocus
+                  type="text"
+                  value={projectSearch}
+                  onChange={e => setProjectSearch(e.target.value)}
+                  onKeyDown={e => { if (e.key === 'Escape') setProjectOpen(false) }}
+                  placeholder="Search projects…"
+                  className="w-full text-sm pl-7 pr-2 py-1.5 rounded-lg border border-slate-200 outline-none focus:border-orchid-400 placeholder-slate-400"
+                />
+              </div>
+            </div>
+
+            <div className="max-h-72 overflow-y-auto">
+              {projectSearch.trim() ? (
+                searchedProjects.length === 0 ? (
+                  <p className="px-3 py-3 text-xs text-slate-400 text-center">No matches</p>
+                ) : (
+                  searchedProjects.map(p => (
+                    <ProjectRow key={p.id} project={p} selected={projectId === p.id}
+                      isFavorite={favoriteIds.has(p.id)}
+                      onSelect={() => { setProjectId(p.id); setProjectOpen(false) }}
+                      onToggleFav={() => toggleFavorite(p.id)} />
+                  ))
+                )
+              ) : (
+                <>
+                  {favorites.length > 0 && (
+                    <>
+                      <p className="px-3 pt-1.5 pb-1 text-[10px] font-semibold text-slate-400 uppercase tracking-wide flex items-center gap-1">
+                        <Star size={9} className="text-amber-400" fill="currentColor" />
+                        Favorites
+                      </p>
+                      {favorites.map(p => (
+                        <ProjectRow key={p.id} project={p} selected={projectId === p.id} isFavorite
+                          onSelect={() => { setProjectId(p.id); setProjectOpen(false) }}
+                          onToggleFav={() => toggleFavorite(p.id)} />
+                      ))}
+                    </>
+                  )}
+                  {others.length > 0 && (
+                    favorites.length === 0 ? (
+                      others.map(p => (
+                        <ProjectRow key={p.id} project={p} selected={projectId === p.id} isFavorite={false}
+                          onSelect={() => { setProjectId(p.id); setProjectOpen(false) }}
+                          onToggleFav={() => toggleFavorite(p.id)} />
+                      ))
+                    ) : (
+                      <>
+                        <div className="border-t border-slate-100 my-1" />
+                        <button
+                          onClick={() => setShowAllOthers(v => !v)}
+                          className="w-full flex items-center gap-2 px-3 py-1.5 text-xs font-semibold text-slate-500 hover:bg-slate-50 transition-colors"
+                        >
+                          <ChevronDown size={12} className={`transition-transform ${showAllOthers ? '' : '-rotate-90'}`} />
+                          Show all projects
+                          <span className="ml-auto text-slate-400">({others.length})</span>
+                        </button>
+                        {showAllOthers && others.map(p => (
+                          <ProjectRow key={p.id} project={p} selected={projectId === p.id} isFavorite={false}
+                            onSelect={() => { setProjectId(p.id); setProjectOpen(false) }}
+                            onToggleFav={() => toggleFavorite(p.id)} />
+                        ))}
+                      </>
+                    )
+                  )}
+                  {!projects.length && <p className="px-3 py-2 text-xs text-slate-400">No projects yet</p>}
+                </>
+              )}
+            </div>
+
             <div className="border-t border-slate-100 mt-1 pt-1 px-2 pb-1">
               <div className="flex items-center gap-1">
                 <input
