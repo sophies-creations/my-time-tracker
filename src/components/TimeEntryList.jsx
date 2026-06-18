@@ -3,6 +3,7 @@ import { Pencil, Trash2, Clock, Play, ChevronDown } from 'lucide-react'
 import { supabase } from '../lib/supabase'
 import { useAuth } from '../contexts/AuthContext'
 import { formatDuration, formatTime, groupByDate, formatDateHeader } from '../utils/formatters'
+import InlineDurationEdit from './InlineDurationEdit'
 import toast from 'react-hot-toast'
 
 function stackKey(entry) {
@@ -30,7 +31,7 @@ function stackDay(dayEntries) {
   return out
 }
 
-function EntryRow({ entry, isManager, onEdit, onResume, onDelete, indented }) {
+function EntryRow({ entry, isManager, onEdit, onResume, onDelete, onRefresh, indented }) {
   const canEdit = isManager
   return (
     <div className={`flex items-center gap-3 px-4 py-3 group ${indented ? 'pl-10 bg-slate-50/40' : ''}`}>
@@ -49,19 +50,14 @@ function EntryRow({ entry, isManager, onEdit, onResume, onDelete, indented }) {
       <span className="text-xs text-slate-400 hidden sm:block flex-shrink-0 font-mono tabular-nums">
         {formatTime(entry.start_time)}–{entry.end_time ? formatTime(entry.end_time) : '...'}
       </span>
-      {canEdit ? (
-        <button
-          onClick={() => onEdit(entry)}
-          title="Edit time"
-          className="font-mono text-sm w-20 text-right flex-shrink-0 tabular-nums text-slate-700 hover:text-orchid-700 hover:underline decoration-dotted underline-offset-4"
-        >
-          {formatDuration(entry.duration ?? 0)}
-        </button>
-      ) : (
-        <span className="font-mono text-sm text-slate-700 w-20 text-right flex-shrink-0 tabular-nums">
-          {formatDuration(entry.duration ?? 0)}
-        </span>
-      )}
+      <div className="w-20 text-right flex-shrink-0">
+        <InlineDurationEdit
+          entry={entry}
+          canEdit={canEdit}
+          onSaved={onRefresh}
+          className="text-sm text-slate-700"
+        />
+      </div>
       <div className="flex items-center gap-0.5">
         <button
           onClick={() => onResume(entry)}
@@ -234,6 +230,7 @@ export default function TimeEntryList({ entries, onEdit, onRefresh }) {
                         onEdit={onEdit}
                         onResume={handleResume}
                         onDelete={handleDelete}
+                        onRefresh={onRefresh}
                       />
                     )
                   }
@@ -255,6 +252,7 @@ export default function TimeEntryList({ entries, onEdit, onRefresh }) {
                           onEdit={onEdit}
                           onResume={handleResume}
                           onDelete={handleDelete}
+                          onRefresh={onRefresh}
                           indented
                         />
                       ))}

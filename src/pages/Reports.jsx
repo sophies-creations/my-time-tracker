@@ -12,6 +12,7 @@ import { exportToExcel } from '../utils/export'
 import DateRangePicker from '../components/DateRangePicker'
 import StackedDayBars, { buildBuckets } from '../components/StackedDayBars'
 import FilterPill, { SelectableList } from '../components/FilterPill'
+import InlineDurationEdit from '../components/InlineDurationEdit'
 import toast from 'react-hot-toast'
 
 const WEEK_OPT = { weekStartsOn: 1 }
@@ -33,23 +34,6 @@ const STATUS_OPTIONS = [
   { key: 'running',   label: 'Running' },
   { key: 'all',       label: 'All entries' },
 ]
-
-const pad = n => String(n).padStart(2, '0')
-const clamp = (n, lo, hi) => Math.min(Math.max(n, lo), hi)
-
-function secondsToHms(secs) {
-  const s = Math.max(0, Math.floor(secs))
-  return `${pad(Math.floor(s / 3600))}:${pad(Math.floor((s % 3600) / 60))}:${pad(s % 60)}`
-}
-
-function hmsToSeconds(text, fallback) {
-  if (typeof text !== 'string') return fallback
-  const digits = text.replace(/[^\d]/g, '').slice(0, 6).padEnd(6, '0')
-  const h = clamp(parseInt(digits.slice(0, 2), 10), 0, 99)
-  const m = clamp(parseInt(digits.slice(2, 4), 10), 0, 59)
-  const s = clamp(parseInt(digits.slice(4, 6), 10), 0, 59)
-  return h * 3600 + m * 60 + s
-}
 
 function groupKey(entry, by) {
   switch (by) {
@@ -152,63 +136,6 @@ function DonutChart({ segments, total, size = 168 }) {
         )
       })}
     </svg>
-  )
-}
-
-function DurationCell({ entry, canEdit, onSaved }) {
-  const [editing, setEditing] = useState(false)
-  const [text, setText]       = useState(secondsToHms(entry.duration ?? 0))
-  const [saving, setSaving]   = useState(false)
-
-  useEffect(() => { setText(secondsToHms(entry.duration ?? 0)) }, [entry.duration])
-
-  async function commit() {
-    const newSecs = hmsToSeconds(text, entry.duration ?? 0)
-    setEditing(false)
-    if (newSecs === (entry.duration ?? 0)) return
-    if (newSecs <= 0) { toast.error('Duration must be greater than zero'); return }
-    setSaving(true)
-    const start  = new Date(entry.start_time)
-    const newEnd = new Date(start.getTime() + newSecs * 1000)
-    const { error } = await supabase.from('time_entries')
-      .update({ duration: newSecs, end_time: newEnd.toISOString() })
-      .eq('id', entry.id)
-    setSaving(false)
-    if (error) { toast.error(error.message || 'Save failed'); return }
-    toast.success('Duration updated')
-    onSaved()
-  }
-
-  if (!canEdit) {
-    return <span className="font-mono text-slate-700 tabular-nums">{formatDuration(entry.duration ?? 0)}</span>
-  }
-  if (editing) {
-    return (
-      <input
-        autoFocus
-        type="text"
-        inputMode="numeric"
-        aria-label="Duration HH:MM:SS"
-        value={text}
-        onChange={e => setText(e.target.value)}
-        onBlur={commit}
-        onKeyDown={e => {
-          if (e.key === 'Enter') { e.preventDefault(); commit() }
-          if (e.key === 'Escape') { setText(secondsToHms(entry.duration ?? 0)); setEditing(false) }
-        }}
-        className="w-24 text-right font-mono text-sm tabular-nums border border-orchid-300 rounded px-2 py-0.5 outline-none focus:ring-2 focus:ring-orchid-400"
-      />
-    )
-  }
-  return (
-    <button
-      onClick={() => setEditing(true)}
-      disabled={saving}
-      title="Click to edit duration"
-      className="font-mono text-slate-700 tabular-nums hover:text-orchid-700 hover:underline decoration-dotted underline-offset-4"
-    >
-      {formatDuration(entry.duration ?? 0)}
-    </button>
   )
 }
 
@@ -823,7 +750,7 @@ export default function Reports() {
                                 {isManager && <td className="px-4 py-2.5 text-slate-600">{entry.user?.full_name || entry.user?.email || '—'}</td>}
                                 <td className="px-4 py-2.5 text-slate-500">{format(new Date(entry.start_time), 'yyyy-MM-dd')}</td>
                                 <td className="px-4 py-2.5 text-right">
-                                  <DurationCell entry={entry} canEdit={isManager} onSaved={fetchEntries} />
+                                  <InlineDurationEdit entry={entry} canEdit={isManager} onSaved={fetchEntries} className="text-slate-700" />
                                 </td>
                               </tr>
                             ))}

@@ -57,7 +57,7 @@ export default function TopBar() {
   const role = profile?.role ?? 'member'
 
   return (
-    <header className="h-12 bg-white border-b border-slate-200 flex items-center justify-end px-4 flex-shrink-0 gap-3">
+    <header className="relative z-30 h-12 bg-white border-b border-slate-200 flex items-center justify-end px-4 flex-shrink-0 gap-3">
       {timerRunning && (
         <span
           title="A timer is running"
