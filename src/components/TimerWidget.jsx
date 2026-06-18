@@ -263,46 +263,42 @@ export default function TimerWidget() {
                 )
               ) : (
                 <>
-                  {favorites.length > 0 && (
+                  <p className="px-3 pt-1.5 pb-1 text-[10px] font-semibold text-slate-400 uppercase tracking-wide flex items-center gap-1">
+                    <Star size={9} className="text-amber-400" fill="currentColor" />
+                    Favorites
+                  </p>
+                  {favorites.length > 0 ? (
+                    favorites.map(p => (
+                      <ProjectRow key={p.id} project={p} selected={projectId === p.id} isFavorite
+                        onSelect={() => { setProjectId(p.id); setProjectOpen(false) }}
+                        onToggleFav={() => toggleFavorite(p.id)} />
+                    ))
+                  ) : (
+                    <p className="px-3 py-1.5 text-xs text-slate-400 italic">
+                      No favourites yet — star a project to pin it here.
+                    </p>
+                  )}
+                  {others.length > 0 && (
                     <>
-                      <p className="px-3 pt-1.5 pb-1 text-[10px] font-semibold text-slate-400 uppercase tracking-wide flex items-center gap-1">
-                        <Star size={9} className="text-amber-400" fill="currentColor" />
-                        Favorites
-                      </p>
-                      {favorites.map(p => (
-                        <ProjectRow key={p.id} project={p} selected={projectId === p.id} isFavorite
+                      <div className="border-t border-slate-100 my-1" />
+                      <button
+                        onClick={() => setShowAllOthers(v => !v)}
+                        className="w-full flex items-center gap-2 px-3 py-1.5 text-xs font-semibold text-slate-500 hover:bg-slate-50 transition-colors"
+                      >
+                        <ChevronDown size={12} className={`transition-transform ${showAllOthers ? '' : '-rotate-90'}`} />
+                        Show all projects
+                        <span className="ml-auto text-slate-400">({others.length})</span>
+                      </button>
+                      {showAllOthers && others.map(p => (
+                        <ProjectRow key={p.id} project={p} selected={projectId === p.id} isFavorite={false}
                           onSelect={() => { setProjectId(p.id); setProjectOpen(false) }}
                           onToggleFav={() => toggleFavorite(p.id)} />
                       ))}
                     </>
                   )}
-                  {others.length > 0 && (
-                    favorites.length === 0 ? (
-                      others.map(p => (
-                        <ProjectRow key={p.id} project={p} selected={projectId === p.id} isFavorite={false}
-                          onSelect={() => { setProjectId(p.id); setProjectOpen(false) }}
-                          onToggleFav={() => toggleFavorite(p.id)} />
-                      ))
-                    ) : (
-                      <>
-                        <div className="border-t border-slate-100 my-1" />
-                        <button
-                          onClick={() => setShowAllOthers(v => !v)}
-                          className="w-full flex items-center gap-2 px-3 py-1.5 text-xs font-semibold text-slate-500 hover:bg-slate-50 transition-colors"
-                        >
-                          <ChevronDown size={12} className={`transition-transform ${showAllOthers ? '' : '-rotate-90'}`} />
-                          Show all projects
-                          <span className="ml-auto text-slate-400">({others.length})</span>
-                        </button>
-                        {showAllOthers && others.map(p => (
-                          <ProjectRow key={p.id} project={p} selected={projectId === p.id} isFavorite={false}
-                            onSelect={() => { setProjectId(p.id); setProjectOpen(false) }}
-                            onToggleFav={() => toggleFavorite(p.id)} />
-                        ))}
-                      </>
-                    )
+                  {!projects.length && (
+                    <p className="px-3 py-2 text-xs text-slate-400">No projects yet</p>
                   )}
-                  {!projects.length && <p className="px-3 py-2 text-xs text-slate-400">No projects yet</p>}
                 </>
               )}
             </div>

@@ -11,6 +11,7 @@ import { formatDuration } from '../utils/formatters'
 import { exportToExcel } from '../utils/export'
 import DateRangePicker from '../components/DateRangePicker'
 import StackedDayBars, { buildBuckets } from '../components/StackedDayBars'
+import FilterPill, { SelectableList } from '../components/FilterPill'
 import toast from 'react-hot-toast'
 
 const WEEK_OPT = { weekStartsOn: 1 }
@@ -104,32 +105,51 @@ function flatGroup(entries, by) {
   return Array.from(map.values()).sort((a, b) => b.seconds - a.seconds)
 }
 
-function nestGroup(entries, by, then) {
+// Up to three levels of nesting. Each level may be 'none' to stop.
+function nestGroup(entries, by, then, andThen) {
   const top = flatGroup(entries, by)
   if (then === 'none') return top.map(g => ({ ...g, children: null }))
-  return top.map(g => ({ ...g, children: flatGroup(g.entries, then) }))
+  return top.map(g => {
+    const second = flatGroup(g.entries, then)
+    if (andThen === 'none') return { ...g, children: second.map(s => ({ ...s, children: null })) }
+    return {
+      ...g,
+      children: second.map(s => ({ ...s, children: flatGroup(s.entries, andThen) })),
+    }
+  })
 }
 
-function DonutChart({ segments, total }) {
+function DonutChart({ segments, total, size = 168 }) {
   const R = 38, circ = 2 * Math.PI * R
+  const GAP = total ? Math.min(2, (circ / segments.length) * 0.4) : 0
   let cumulative = 0
   if (!total) {
     return (
-      <svg viewBox="0 0 100 100" className="w-36 h-36">
+      <svg viewBox="0 0 100 100" style={{ width: size, height: size }}>
         <circle cx="50" cy="50" r={R} fill="none" stroke="#f1f5f9" strokeWidth="14" />
         <text x="50" y="54" textAnchor="middle" fill="#94a3b8" fontSize="8">No data</text>
       </svg>
     )
   }
   return (
-    <svg viewBox="0 0 100 100" className="w-36 h-36 -rotate-90">
+    <svg viewBox="0 0 100 100" style={{ width: size, height: size }} className="-rotate-90">
       {segments.map((seg, i) => {
         const frac = seg.seconds / total
-        const dash = `${frac * circ} ${circ}`
+        const len  = Math.max(0, frac * circ - GAP)
+        const dash = `${len} ${circ}`
         const rot  = `rotate(${(cumulative / total) * 360} 50 50)`
         cumulative += seg.seconds
         const color = seg.color || CHART_COLORS[i % CHART_COLORS.length]
-        return <circle key={i} cx="50" cy="50" r={R} fill="none" stroke={color} strokeWidth="14" strokeDasharray={dash} transform={rot} />
+        return (
+          <circle
+            key={i}
+            cx="50" cy="50" r={R}
+            fill="none" stroke={color} strokeWidth="14"
+            strokeDasharray={dash} transform={rot}
+          >
+            <title>{`${seg.label}: ${formatDuration(seg.seconds)} (${((seg.seconds / total) * 100).toFixed(1)}%)`}</title>
+          </circle>
+        )
       })}
     </svg>
   )
@@ -201,8 +221,6 @@ export default function Reports() {
   const initialTo   = endOfWeek(new Date(), WEEK_OPT)
   const [range, setRange] = useState({ from: initialFrom, to: initialTo })
 
-  // Applied filters drive the query. Staged filters mirror UI state on
-  // Summary until the user clicks Apply.
   const [filterProject,     setFilterProject]     = useState('')
   const [filterUser,        setFilterUser]        = useState('')
   const [filterClient,      setFilterClient]      = useState('')
@@ -215,15 +233,22 @@ export default function Reports() {
   const [stagedDescription, setStagedDescription] = useState('')
   const [stagedStatus,      setStagedStatus]      = useState('completed')
 
-  const [groupBy, setGroupBy]         = useState('project')
+  const [groupBy,     setGroupBy]     = useState('project')
   const [secondaryBy, setSecondaryBy] = useState('none')
-  const [expanded, setExpanded]       = useState(() => new Set())
+  const [tertiaryBy,  setTertiaryBy]  = useState('none')
+  const [expanded,    setExpanded]    = useState(() => new Set())
   const [entries, setEntries]         = useState([])
   const [users, setUsers]             = useState([])
   const [loading, setLoading]         = useState(false)
   const [weekRef, setWeekRef]         = useState(new Date())
 
   useEffect(() => { if (isManager) fetchUsers() }, [isManager])
+
+  // Reset tertiary if its level becomes invalid.
+  useEffect(() => {
+    if (secondaryBy === 'none' && tertiaryBy !== 'none') setTertiaryBy('none')
+    if (tertiaryBy === groupBy || tertiaryBy === secondaryBy) setTertiaryBy('none')
+  }, [groupBy, secondaryBy, tertiaryBy])
 
   const fetchEntries = useCallback(async () => {
     if (!range?.from) return
@@ -244,7 +269,6 @@ export default function Reports() {
       if (filterDescription.trim()) q = q.ilike('description', `%${filterDescription.trim()}%`)
       const { data, error } = await q
       if (error) throw error
-      // Client filter is applied here so we can keep the query flat.
       const filtered = filterClient
         ? (data ?? []).filter(e => e.project?.client_id === filterClient)
         : (data ?? [])
@@ -274,16 +298,8 @@ export default function Reports() {
   }
 
   function resetFilters() {
-    setStagedProject('')
-    setStagedUser('')
-    setStagedClient('')
-    setStagedDescription('')
-    setStagedStatus('completed')
-    setFilterProject('')
-    setFilterUser('')
-    setFilterClient('')
-    setFilterDescription('')
-    setFilterStatus('completed')
+    setStagedProject(''); setStagedUser(''); setStagedClient(''); setStagedDescription(''); setStagedStatus('completed')
+    setFilterProject(''); setFilterUser(''); setFilterClient(''); setFilterDescription(''); setFilterStatus('completed')
   }
 
   async function handleExport() {
@@ -294,8 +310,11 @@ export default function Reports() {
         const secondaryLabel = secondaryBy === 'none'
           ? null
           : SECONDARY_OPTIONS.find(o => o.key === secondaryBy)?.label
+        const tertiaryLabel = tertiaryBy === 'none'
+          ? null
+          : SECONDARY_OPTIONS.find(o => o.key === tertiaryBy)?.label
         await exportToExcel(
-          { mode: 'summary', groups: nested, primaryLabel, secondaryLabel, totalSecs },
+          { mode: 'summary', groups: nested, primaryLabel, secondaryLabel, tertiaryLabel, totalSecs },
           `TimeReport_Summary_${fromStr}_to_${toStr}`,
         )
       } else {
@@ -319,14 +338,12 @@ export default function Reports() {
   }, [entries, groupBy])
 
   const nested = useMemo(() => {
-    const top = nestGroup(entries, groupBy, secondaryBy)
+    const top = nestGroup(entries, groupBy, secondaryBy, tertiaryBy)
     return top.map((g, i) => ({ ...g, color: g.color || CHART_COLORS[i % CHART_COLORS.length] }))
-  }, [entries, groupBy, secondaryBy])
+  }, [entries, groupBy, secondaryBy, tertiaryBy])
 
   const detailed = useMemo(() => flatGroup(entries, groupBy), [entries, groupBy])
 
-  // Adaptive bucketing for the Summary chart — day buckets up to ~31 days,
-  // week buckets up to ~6 months, month buckets beyond.
   const chartBuckets = useMemo(() => buildBuckets(entries, range), [entries, range])
 
   const weekStart = startOfWeek(weekRef, WEEK_OPT)
@@ -339,6 +356,16 @@ export default function Reports() {
     return acc
   }, {})
 
+  const weeklyEntries = useMemo(() => entries.filter(e => {
+    const t = new Date(e.start_time)
+    return t >= weekStart && t <= weekEnd
+  }), [entries, weekStart, weekEnd])
+  const weeklyTotal = weeklyEntries.reduce((s, e) => s + (e.duration ?? 0), 0)
+  const weeklyByProject = useMemo(() => {
+    const flat = flatGroup(weeklyEntries, 'project')
+    return flat.map((g, i) => ({ ...g, color: g.color || CHART_COLORS[i % CHART_COLORS.length] }))
+  }, [weeklyEntries])
+
   function toggleGroup(k) {
     setExpanded(prev => {
       const next = new Set(prev)
@@ -350,7 +377,9 @@ export default function Reports() {
   function expandAll(keys) { setExpanded(new Set(keys)) }
   function collapseAll()   { setExpanded(new Set()) }
 
-  const primaryLabel = GROUP_OPTIONS.find(o => o.key === groupBy)?.label ?? 'Group'
+  const primaryLabel   = GROUP_OPTIONS.find(o => o.key === groupBy)?.label ?? 'Group'
+  const secondaryLabel = SECONDARY_OPTIONS.find(o => o.key === secondaryBy)?.label
+  const tertiaryLabel  = SECONDARY_OPTIONS.find(o => o.key === tertiaryBy)?.label
 
   const filtersDirty =
     stagedProject     !== filterProject ||
@@ -359,45 +388,99 @@ export default function Reports() {
     stagedDescription !== filterDescription ||
     stagedStatus      !== filterStatus
 
-  const summaryFilterBar = (
-    <div className="bg-white rounded-xl border border-slate-200 p-4 mb-5 flex flex-wrap items-end gap-3">
+  const userOptions    = [{ value: '', label: 'All users' }, ...users.map(u => ({ value: u.id, label: u.full_name || u.email }))]
+  const clientOptions  = [{ value: '', label: 'All clients' }, ...clients.map(c => ({ value: c.id, label: c.name }))]
+  const projectOptions = [{ value: '', label: 'All projects' }, ...projects.map(p => ({ value: p.id, label: p.name }))]
+  const statusOptions  = STATUS_OPTIONS.map(s => ({ value: s.key, label: s.label }))
+
+  const userLabel    = userOptions.find(o => o.value === stagedUser)?.label    ?? ''
+  const clientLabel  = clientOptions.find(o => o.value === stagedClient)?.label  ?? ''
+  const projectLabel = projectOptions.find(o => o.value === stagedProject)?.label ?? ''
+  const statusLabel  = statusOptions.find(o => o.value === stagedStatus)?.label ?? ''
+
+  const sharedFilterRow = (
+    <div className="bg-white rounded-xl border border-slate-200 p-3 mb-5 flex flex-wrap items-center gap-2">
       {isManager && (
-        <FilterSelect
+        <FilterPill
           label="Team / User"
-          value={stagedUser}
-          onChange={setStagedUser}
-          options={[{ value: '', label: 'All users' }, ...users.map(u => ({ value: u.id, label: u.full_name || u.email }))]}
-        />
+          valueLabel={userLabel}
+          hasValue={!!stagedUser}
+          onClear={() => setStagedUser('')}
+        >
+          {close => (
+            <SelectableList
+              options={userOptions}
+              value={stagedUser}
+              onChange={v => { setStagedUser(v); close() }}
+            />
+          )}
+        </FilterPill>
       )}
-      <FilterSelect
+      <FilterPill
         label="Client"
-        value={stagedClient}
-        onChange={setStagedClient}
-        options={[{ value: '', label: 'All clients' }, ...clients.map(c => ({ value: c.id, label: c.name }))]}
-      />
-      <FilterSelect
+        valueLabel={clientLabel}
+        hasValue={!!stagedClient}
+        onClear={() => setStagedClient('')}
+      >
+        {close => (
+          <SelectableList
+            options={clientOptions}
+            value={stagedClient}
+            onChange={v => { setStagedClient(v); close() }}
+          />
+        )}
+      </FilterPill>
+      <FilterPill
         label="Project"
-        value={stagedProject}
-        onChange={setStagedProject}
-        options={[{ value: '', label: 'All projects' }, ...projects.map(p => ({ value: p.id, label: p.name }))]}
-      />
-      <div className="flex flex-col gap-1">
-        <label className="text-[10px] font-semibold text-slate-500 uppercase tracking-wide">Description</label>
-        <input
-          type="text"
-          value={stagedDescription}
-          onChange={e => setStagedDescription(e.target.value)}
-          onKeyDown={e => { if (e.key === 'Enter') applyFilters() }}
-          placeholder="Contains…"
-          className="border border-slate-200 rounded-lg px-3 py-2 text-sm text-slate-700 outline-none focus:ring-2 focus:ring-orchid-500 bg-white w-48"
-        />
-      </div>
-      <FilterSelect
+        valueLabel={projectLabel}
+        hasValue={!!stagedProject}
+        onClear={() => setStagedProject('')}
+      >
+        {close => (
+          <SelectableList
+            options={projectOptions}
+            value={stagedProject}
+            onChange={v => { setStagedProject(v); close() }}
+          />
+        )}
+      </FilterPill>
+      <FilterPill
+        label="Description"
+        valueLabel={stagedDescription}
+        hasValue={!!stagedDescription}
+        onClear={() => setStagedDescription('')}
+        width="w-72"
+      >
+        {close => (
+          <div className="p-2">
+            <input
+              autoFocus
+              type="text"
+              value={stagedDescription}
+              onChange={e => setStagedDescription(e.target.value)}
+              onKeyDown={e => { if (e.key === 'Enter') { applyFilters(); close() } }}
+              placeholder="Contains…"
+              className="w-full text-sm px-2 py-1.5 rounded border border-slate-200 outline-none focus:border-orchid-400"
+            />
+            <p className="text-[10px] text-slate-400 mt-1 px-1">Press Enter or click Apply filter to commit.</p>
+          </div>
+        )}
+      </FilterPill>
+      <FilterPill
         label="Status"
-        value={stagedStatus}
-        onChange={setStagedStatus}
-        options={STATUS_OPTIONS.map(s => ({ value: s.key, label: s.label }))}
-      />
+        valueLabel={statusLabel}
+        hasValue={stagedStatus !== 'completed'}
+        onClear={() => setStagedStatus('completed')}
+      >
+        {close => (
+          <SelectableList
+            options={statusOptions}
+            value={stagedStatus}
+            onChange={v => { setStagedStatus(v); close() }}
+            search={false}
+          />
+        )}
+      </FilterPill>
       <div className="flex items-center gap-2 ml-auto">
         {filtersDirty && (
           <button
@@ -416,30 +499,63 @@ export default function Reports() {
     </div>
   )
 
+  const groupByOptions       = GROUP_OPTIONS.map(o => ({ value: o.key, label: o.label }))
+  const secondaryFiltered    = SECONDARY_OPTIONS.filter(o => o.key !== groupBy).map(o => ({ value: o.key, label: o.label }))
+  const tertiaryFiltered     = SECONDARY_OPTIONS.filter(o => o.key !== groupBy && o.key !== secondaryBy).map(o => ({ value: o.key, label: o.label }))
+  const showTertiary         = secondaryBy !== 'none'
+
   const groupByRow = (
-    <div className="bg-white rounded-xl border border-slate-200 p-4 mb-5 flex flex-wrap items-center gap-3">
-      <div className="flex items-center gap-2">
-        <label className="text-xs font-medium text-slate-500 uppercase tracking-wide">Group by</label>
-        <select
-          value={groupBy}
-          onChange={e => { setGroupBy(e.target.value); setExpanded(new Set()) }}
-          className="border border-slate-200 rounded-lg px-3 py-2 text-sm text-slate-700 outline-none focus:ring-2 focus:ring-orchid-500 bg-white"
-        >
-          {GROUP_OPTIONS.map(o => <option key={o.key} value={o.key}>{o.label}</option>)}
-        </select>
-      </div>
-      <div className="flex items-center gap-2">
-        <label className="text-xs font-medium text-slate-500 uppercase tracking-wide">then by</label>
-        <select
-          value={secondaryBy}
-          onChange={e => { setSecondaryBy(e.target.value); setExpanded(new Set()) }}
-          className="border border-slate-200 rounded-lg px-3 py-2 text-sm text-slate-700 outline-none focus:ring-2 focus:ring-orchid-500 bg-white"
-        >
-          {SECONDARY_OPTIONS
-            .filter(o => o.key !== groupBy)
-            .map(o => <option key={o.key} value={o.key}>{o.label}</option>)}
-        </select>
-      </div>
+    <div className="bg-white rounded-xl border border-slate-200 p-3 mb-5 flex flex-wrap items-center gap-2">
+      <FilterPill
+        label="Group by"
+        valueLabel={primaryLabel}
+        hasValue
+      >
+        {close => (
+          <SelectableList
+            options={groupByOptions}
+            value={groupBy}
+            onChange={v => { setGroupBy(v); setExpanded(new Set()); close() }}
+            search={false}
+          />
+        )}
+      </FilterPill>
+      <span className="text-slate-300 text-xs">→</span>
+      <FilterPill
+        label="Then by"
+        valueLabel={secondaryLabel}
+        hasValue={secondaryBy !== 'none'}
+        onClear={secondaryBy !== 'none' ? () => { setSecondaryBy('none'); setExpanded(new Set()) } : undefined}
+      >
+        {close => (
+          <SelectableList
+            options={secondaryFiltered}
+            value={secondaryBy}
+            onChange={v => { setSecondaryBy(v); setExpanded(new Set()); close() }}
+            search={false}
+          />
+        )}
+      </FilterPill>
+      {showTertiary && (
+        <>
+          <span className="text-slate-300 text-xs">→</span>
+          <FilterPill
+            label="Then by"
+            valueLabel={tertiaryLabel}
+            hasValue={tertiaryBy !== 'none'}
+            onClear={tertiaryBy !== 'none' ? () => { setTertiaryBy('none'); setExpanded(new Set()) } : undefined}
+          >
+            {close => (
+              <SelectableList
+                options={tertiaryFiltered}
+                value={tertiaryBy}
+                onChange={v => { setTertiaryBy(v); setExpanded(new Set()); close() }}
+                search={false}
+              />
+            )}
+          </FilterPill>
+        </>
+      )}
     </div>
   )
 
@@ -505,12 +621,7 @@ export default function Reports() {
         ))}
       </div>
 
-      {tab === 'summary' && (
-        <>
-          {summaryFilterBar}
-          {groupByRow}
-        </>
-      )}
+      {(tab === 'summary' || tab === 'weekly') && sharedFilterRow}
       {tab === 'detailed' && detailedFilterBar}
 
       {loading ? (
@@ -533,39 +644,32 @@ export default function Reports() {
                 </div>
               </div>
 
-              <div className="grid grid-cols-1 lg:grid-cols-5 gap-5">
-                <div className="lg:col-span-2 bg-white rounded-xl border border-slate-200 p-5 flex flex-col items-center">
-                  <h3 className="text-sm font-semibold text-slate-700 mb-4 self-start">
-                    Breakdown by {primaryLabel.toLowerCase()}
-                  </h3>
-                  <DonutChart segments={primaryGroups} total={totalSecs} />
-                  <div className="mt-4 space-y-1.5 w-full">
-                    {primaryGroups.slice(0, 8).map((d, i) => (
-                      <div key={i} className="flex items-center gap-2 text-xs text-slate-600">
-                        <span className="w-2.5 h-2.5 rounded-full shrink-0" style={{ backgroundColor: d.color }} />
-                        <span className="flex-1 truncate">{d.label}</span>
-                        <span className="font-mono text-slate-500 shrink-0">{totalSecs ? Math.round((d.seconds / totalSecs) * 100) : 0}%</span>
-                      </div>
-                    ))}
-                    {!primaryGroups.length && (
-                      <p className="text-xs text-slate-400 text-center py-2">No data</p>
-                    )}
-                  </div>
-                </div>
+              {groupByRow}
 
-                <div className="lg:col-span-3 bg-white rounded-xl border border-slate-200 overflow-hidden">
+              <div className="bg-white rounded-xl border border-slate-200 grid grid-cols-1 md:grid-cols-5 md:divide-x divide-slate-200 overflow-hidden">
+                <div className="md:col-span-3">
                   <div className="flex items-center justify-between px-5 py-3 border-b border-slate-100">
                     <h3 className="text-sm font-semibold text-slate-700">
                       Grouped totals
                       <span className="ml-2 text-xs font-medium text-slate-400">
                         {primaryLabel}
-                        {secondaryBy !== 'none' && ` → ${SECONDARY_OPTIONS.find(o => o.key === secondaryBy)?.label}`}
+                        {secondaryBy !== 'none' && ` → ${secondaryLabel}`}
+                        {tertiaryBy  !== 'none' && ` → ${tertiaryLabel}`}
                       </span>
                     </h3>
                     {secondaryBy !== 'none' && nested.length > 0 && (
                       <div className="flex gap-2">
                         <button
-                          onClick={() => expandAll(nested.map(g => g.key))}
+                          onClick={() => {
+                            const keys = []
+                            for (const g of nested) {
+                              keys.push(g.key)
+                              if (tertiaryBy !== 'none' && g.children) {
+                                for (const c of g.children) keys.push(`${g.key}|${c.key}`)
+                              }
+                            }
+                            expandAll(keys)
+                          }}
                           className="text-xs font-medium text-slate-500 hover:text-orchid-700 transition-colors"
                         >Expand all</button>
                         <span className="text-xs text-slate-300">·</span>
@@ -581,55 +685,70 @@ export default function Reports() {
                   )}
                   <div className="divide-y divide-slate-100 max-h-[28rem] overflow-y-auto">
                     {nested.map(g => {
-                      const hasChildren = !!g.children
-                      const isOpen = expanded.has(g.key)
+                      const k1 = g.key
+                      const expanded1 = secondaryBy !== 'none' && expanded.has(k1)
                       return (
-                        <div key={g.key}>
-                          <button
-                            onClick={() => hasChildren && toggleGroup(g.key)}
-                            className={`w-full flex items-center gap-3 px-5 py-3 text-left ${hasChildren ? 'hover:bg-slate-50' : 'cursor-default'}`}
-                          >
-                            {hasChildren ? (
-                              <ChevronDown
-                                size={14}
-                                className={`text-slate-400 transition-transform shrink-0 ${isOpen ? '' : '-rotate-90'}`}
-                              />
-                            ) : <span className="w-3.5 shrink-0" />}
-                            <span
-                              className="w-2.5 h-2.5 rounded-full shrink-0"
-                              style={{ backgroundColor: g.color }}
-                            />
-                            <span className="text-sm text-slate-800 truncate flex-1">{g.label}</span>
-                            <span className="text-xs text-slate-400 shrink-0 font-mono w-10 text-right">
-                              {totalSecs ? ((g.seconds / totalSecs) * 100).toFixed(1) : 0}%
-                            </span>
-                            <span className="font-mono text-sm font-semibold text-slate-800 w-24 text-right shrink-0 tabular-nums">
-                              {formatDuration(g.seconds)}
-                            </span>
-                          </button>
-                          {hasChildren && isOpen && (
-                            <div className="bg-slate-50/50">
-                              {g.children.map((c, i) => (
-                                <div key={c.key} className="flex items-center gap-3 pl-12 pr-5 py-2 border-t border-slate-100">
-                                  <span
-                                    className="w-2 h-2 rounded-full shrink-0"
-                                    style={{ backgroundColor: c.color || CHART_COLORS[i % CHART_COLORS.length] }}
-                                  />
-                                  <span className="text-sm text-slate-600 truncate flex-1">{c.label}</span>
-                                  <span className="text-xs text-slate-400 shrink-0 font-mono w-10 text-right">
-                                    {g.seconds ? ((c.seconds / g.seconds) * 100).toFixed(1) : 0}%
-                                  </span>
-                                  <span className="font-mono text-sm text-slate-700 w-24 text-right shrink-0 tabular-nums">
-                                    {formatDuration(c.seconds)}
-                                  </span>
-                                </div>
-                              ))}
-                            </div>
-                          )}
+                        <div key={k1}>
+                          <GroupRow
+                            level={1}
+                            label={g.label}
+                            color={g.color}
+                            seconds={g.seconds}
+                            pct={totalSecs ? (g.seconds / totalSecs) * 100 : 0}
+                            hasChildren={secondaryBy !== 'none'}
+                            expanded={expanded1}
+                            onToggle={() => toggleGroup(k1)}
+                          />
+                          {expanded1 && g.children?.map((c, ci) => {
+                            const k2 = `${k1}|${c.key}`
+                            const expanded2 = tertiaryBy !== 'none' && expanded.has(k2) && c.children?.length > 0
+                            const cColor = c.color || CHART_COLORS[ci % CHART_COLORS.length]
+                            return (
+                              <div key={k2}>
+                                <GroupRow
+                                  level={2}
+                                  label={c.label}
+                                  color={cColor}
+                                  seconds={c.seconds}
+                                  pct={g.seconds ? (c.seconds / g.seconds) * 100 : 0}
+                                  hasChildren={tertiaryBy !== 'none' && c.children?.length > 0}
+                                  expanded={expanded2}
+                                  onToggle={() => toggleGroup(k2)}
+                                />
+                                {expanded2 && c.children?.map((t, ti) => {
+                                  const tColor = t.color || CHART_COLORS[ti % CHART_COLORS.length]
+                                  return (
+                                    <GroupRow
+                                      key={`${k2}|${t.key}`}
+                                      level={3}
+                                      label={t.label}
+                                      color={tColor}
+                                      seconds={t.seconds}
+                                      pct={c.seconds ? (t.seconds / c.seconds) * 100 : 0}
+                                    />
+                                  )
+                                })}
+                              </div>
+                            )
+                          })}
                         </div>
                       )
                     })}
                   </div>
+                </div>
+
+                <div className="md:col-span-2 p-5 flex flex-col items-center justify-center">
+                  <h3 className="text-sm font-semibold text-slate-700 mb-4 self-start">
+                    Breakdown
+                  </h3>
+                  <DonutChart
+                    segments={primaryGroups.map(g => ({
+                      label: g.label,
+                      seconds: g.seconds,
+                      color: g.color,
+                    }))}
+                    total={totalSecs}
+                  />
                 </div>
               </div>
             </div>
@@ -724,8 +843,8 @@ export default function Reports() {
           )}
 
           {tab === 'weekly' && (
-            <div>
-              <div className="flex items-center justify-between mb-4">
+            <div className="space-y-5">
+              <div className="flex items-center justify-between mb-2">
                 <button onClick={() => setWeekRef(subWeeks(weekRef, 1))} className="p-2 hover:bg-slate-100 rounded-lg">
                   <ChevronLeft size={18} />
                 </button>
@@ -770,6 +889,35 @@ export default function Reports() {
                   )
                 })}
               </div>
+
+              <div className="bg-white rounded-xl border border-slate-200 overflow-hidden">
+                <div className="flex items-center justify-between px-5 py-3 border-b border-slate-100">
+                  <h3 className="text-sm font-semibold text-slate-700">Time by project (this week)</h3>
+                  <span className="text-xs font-mono text-slate-500">
+                    Week total: <span className="font-semibold text-slate-700">{formatDuration(weeklyTotal)}</span>
+                  </span>
+                </div>
+                {weeklyByProject.length === 0 ? (
+                  <p className="text-sm text-slate-400 text-center py-10">No projects tracked this week</p>
+                ) : (
+                  <div className="divide-y divide-slate-100">
+                    {weeklyByProject.map(p => {
+                      const pct = weeklyTotal ? (p.seconds / weeklyTotal) * 100 : 0
+                      return (
+                        <div key={p.key} className="flex items-center gap-3 px-5 py-2.5">
+                          <span className="w-2.5 h-2.5 rounded-full shrink-0" style={{ backgroundColor: p.color }} />
+                          <span className="text-sm text-slate-700 truncate w-40 shrink-0">{p.label}</span>
+                          <div className="flex-1 h-2.5 bg-slate-100 rounded-full overflow-hidden">
+                            <div className="h-full rounded-full" style={{ width: `${Math.max(pct, 2)}%`, backgroundColor: p.color }} />
+                          </div>
+                          <span className="font-mono text-xs text-slate-500 w-12 text-right shrink-0">{pct.toFixed(1)}%</span>
+                          <span className="font-mono text-sm text-slate-700 w-24 text-right shrink-0 tabular-nums">{formatDuration(p.seconds)}</span>
+                        </div>
+                      )
+                    })}
+                  </div>
+                )}
+              </div>
             </div>
           )}
         </>
@@ -778,17 +926,28 @@ export default function Reports() {
   )
 }
 
-function FilterSelect({ label, value, onChange, options }) {
+function GroupRow({ level, label, color, seconds, pct, hasChildren, expanded, onToggle }) {
+  const indentClass = level === 1 ? 'pl-5' : level === 2 ? 'pl-12' : 'pl-20'
+  const labelCls    = level === 1 ? 'text-sm text-slate-800' : level === 2 ? 'text-sm text-slate-600' : 'text-sm text-slate-500'
+  const fontCls     = level === 1 ? 'font-semibold' : ''
+  const Wrapper = hasChildren ? 'button' : 'div'
   return (
-    <div className="flex flex-col gap-1">
-      <label className="text-[10px] font-semibold text-slate-500 uppercase tracking-wide">{label}</label>
-      <select
-        value={value}
-        onChange={e => onChange(e.target.value)}
-        className="border border-slate-200 rounded-lg px-3 py-2 text-sm text-slate-700 outline-none focus:ring-2 focus:ring-orchid-500 bg-white min-w-[10rem]"
-      >
-        {options.map(o => <option key={o.value} value={o.value}>{o.label}</option>)}
-      </select>
-    </div>
+    <Wrapper
+      onClick={hasChildren ? onToggle : undefined}
+      className={`w-full flex items-center gap-3 ${indentClass} pr-5 py-2.5 text-left ${hasChildren ? 'hover:bg-slate-50' : ''}`}
+    >
+      {hasChildren ? (
+        <ChevronDown
+          size={12}
+          className={`text-slate-400 transition-transform shrink-0 ${expanded ? '' : '-rotate-90'}`}
+        />
+      ) : <span className="w-3 shrink-0" />}
+      <span className="w-2.5 h-2.5 rounded-full shrink-0" style={{ backgroundColor: color }} />
+      <span className={`truncate flex-1 ${labelCls} ${fontCls}`}>{label}</span>
+      <span className="text-xs text-slate-400 shrink-0 font-mono w-12 text-right">{pct.toFixed(1)}%</span>
+      <span className={`font-mono ${level === 1 ? 'text-sm font-semibold text-slate-800' : 'text-sm text-slate-700'} w-24 text-right shrink-0 tabular-nums`}>
+        {formatDuration(seconds)}
+      </span>
+    </Wrapper>
   )
 }
