@@ -1,5 +1,6 @@
 import { useState, useRef, useEffect } from 'react'
 import { ChevronDown, LogOut, User, Shield, Plus } from 'lucide-react'
+import { supabase } from '../lib/supabase'
 import { useAuth } from '../contexts/AuthContext'
 
 const ROLE_STYLES = {
@@ -16,8 +17,9 @@ function initials(profile) {
 }
 
 export default function TopBar() {
-  const { profile, signOut } = useAuth()
+  const { user, profile, signOut } = useAuth()
   const [open, setOpen] = useState(false)
+  const [timerRunning, setTimerRunning] = useState(false)
   const wrapRef = useRef(null)
 
   useEffect(() => {
@@ -28,6 +30,25 @@ export default function TopBar() {
     return () => document.removeEventListener('mousedown', onDown)
   }, [])
 
+  // Track whether a timer is running so we can show a global indicator.
+  useEffect(() => {
+    if (!user) return
+    let cancelled = false
+    supabase.from('time_entries')
+      .select('id')
+      .eq('user_id', user.id)
+      .eq('is_running', true)
+      .maybeSingle()
+      .then(({ data }) => { if (!cancelled) setTimerRunning(!!data) })
+    return () => { cancelled = true }
+  }, [user])
+
+  useEffect(() => {
+    function onState(e) { setTimerRunning(!!e.detail?.running) }
+    window.addEventListener('timer:state', onState)
+    return () => window.removeEventListener('timer:state', onState)
+  }, [])
+
   function openAddTime() {
     setOpen(false)
     window.dispatchEvent(new CustomEvent('manual-entry:open', { detail: { entry: null } }))
@@ -36,7 +57,20 @@ export default function TopBar() {
   const role = profile?.role ?? 'member'
 
   return (
-    <header className="h-12 bg-white border-b border-slate-200 flex items-center justify-end px-4 flex-shrink-0">
+    <header className="h-12 bg-white border-b border-slate-200 flex items-center justify-end px-4 flex-shrink-0 gap-3">
+      {timerRunning && (
+        <span
+          title="A timer is running"
+          aria-label="Timer running"
+          className="flex items-center gap-1.5 text-[11px] font-medium text-red-600"
+        >
+          <span className="relative flex w-2.5 h-2.5">
+            <span className="absolute inset-0 rounded-full bg-red-500 opacity-60 animate-ping" />
+            <span className="relative w-2.5 h-2.5 rounded-full bg-red-500" />
+          </span>
+          Tracking
+        </span>
+      )}
       <div className="relative" ref={wrapRef}>
         <button
           onClick={() => setOpen(v => !v)}

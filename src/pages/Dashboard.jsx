@@ -105,7 +105,7 @@ export default function Dashboard() {
       // filter so we never have timezone-string drift.
       let entryQ = supabase
         .from('time_entries')
-        .select('id, duration, start_time, end_time, is_running, description, user_id, project_id, project:projects(id, name, color, client_id, client:clients(id, name))')
+        .select('id, duration, start_time, end_time, is_running, description, user_id, project_id, project:projects(id, name, color, client_id, client:clients!projects_client_id_fkey(id, name))')
         .eq('is_running', false)
         .order('start_time', { ascending: false })
         .limit(2000)

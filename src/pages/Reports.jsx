@@ -159,7 +159,7 @@ export default function Reports() {
       const endISO   = endOfDay(range.to ?? range.from).toISOString()
       let q = supabase
         .from('time_entries')
-        .select(`*, project:projects(id, name, color, client:clients(id, name)), user:profiles(id, full_name, email)`)
+        .select(`*, project:projects(id, name, color, client:clients!projects_client_id_fkey(id, name)), user:profiles(id, full_name, email)`)
         .eq('is_running', false)
         .gte('start_time', startISO)
         .lte('start_time', endISO)

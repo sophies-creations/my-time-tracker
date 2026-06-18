@@ -29,6 +29,11 @@ export default function TimerWidget() {
 
   useEffect(() => { if (user) fetchRunningEntry() }, [user])
 
+  // Broadcast running state so other UI (e.g. TopBar indicator) can react.
+  useEffect(() => {
+    window.dispatchEvent(new CustomEvent('timer:state', { detail: { running: !!running } }))
+  }, [running])
+
   useEffect(() => {
     function onDown(e) {
       if (projectRef.current && !projectRef.current.contains(e.target)) setProjectOpen(false)
