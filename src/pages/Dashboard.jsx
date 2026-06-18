@@ -271,7 +271,7 @@ export default function Dashboard() {
             </div>
             <div className="bg-white rounded-xl border border-slate-200 p-5">
               <h3 className="text-sm font-semibold text-slate-700 mb-3">Most tracked activities</h3>
-              <div className="space-y-2.5 max-h-72 overflow-y-auto pr-1">
+              <div className="space-y-2.5">
                 {topActivities.map((a, i) => (
                   <div key={i} className="flex items-center justify-between gap-3 text-sm">
                     <p className="truncate min-w-0" style={{ color: a.project.color }}>● {a.project.name}</p>

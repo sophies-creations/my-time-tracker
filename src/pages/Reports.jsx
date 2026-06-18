@@ -610,7 +610,7 @@ export default function Reports() {
                   {nested.length === 0 && (
                     <p className="text-sm text-slate-400 text-center py-10">No entries for this period</p>
                   )}
-                  <div className="divide-y divide-slate-100 max-h-[28rem] overflow-y-auto">
+                  <div className="divide-y divide-slate-100">
                     {nested.map(g => {
                       const k1 = g.key
                       const expanded1 = secondaryBy !== 'none' && expanded.has(k1)
