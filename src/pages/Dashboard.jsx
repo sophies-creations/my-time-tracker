@@ -8,6 +8,7 @@ import { supabase } from '../lib/supabase'
 import { useAuth } from '../contexts/AuthContext'
 import { formatDuration } from '../utils/formatters'
 import DateRangePicker from '../components/DateRangePicker'
+import StackedDayBars from '../components/StackedDayBars'
 import toast from 'react-hot-toast'
 
 const WEEK_OPT  = { weekStartsOn: 1 }
@@ -16,37 +17,6 @@ const NO_PROJECT = { id: '_none', name: 'Without project', color: '#94a3b8' }
 
 function projOf(e) {
   return e.project ? { id: e.project.id, name: e.project.name, color: e.project.color || FALLBACK[0] } : NO_PROJECT
-}
-
-function StackedColumns({ days, perDay, max }) {
-  return (
-    <div className="flex items-end gap-2 h-56 pt-4">
-      {days.map((day, i) => {
-        const info = perDay[i]
-        const hPct = max ? (info.total / max) * 100 : 0
-        const dayLabel = format(day, 'EEE, MMM d')
-        return (
-          <div key={i} className="flex-1 flex flex-col items-center min-w-0">
-            <div
-              className="relative w-full flex flex-col justify-end"
-              style={{ height: '11rem' }}
-              title={info.total > 0 ? `${dayLabel}: ${formatDuration(info.total)}` : dayLabel}
-            >
-              <div className="w-full rounded-t-md overflow-hidden flex flex-col-reverse" style={{ height: `${hPct}%` }}>
-                {info.segments.map((s, j) => (
-                  <div key={j} title={`${s.name}: ${formatDuration(s.seconds)}`}
-                    style={{ height: `${(s.seconds / info.total) * 100}%`, backgroundColor: s.color }} />
-                ))}
-              </div>
-            </div>
-            <span className="mt-2 text-[10px] text-slate-400 truncate w-full text-center">
-              {format(day, days.length > 10 ? 'd' : 'EEE, MMM d')}
-            </span>
-          </div>
-        )
-      })}
-    </div>
-  )
 }
 
 function Donut({ segments, total }) {
@@ -222,8 +192,6 @@ export default function Dashboard() {
     }, {}))
     return { total: segs.reduce((s, x) => s + x.seconds, 0), segments: segs }
   }), [entries, days])
-  const maxDay = Math.max(...perDay.map(d => d.total), 1)
-
   const topActivities = useMemo(() => Object.values(
     entries.reduce((acc, e) => {
       const p = projOf(e)
@@ -311,7 +279,7 @@ export default function Dashboard() {
           <div className="grid grid-cols-1 lg:grid-cols-3 gap-5">
             <div className="lg:col-span-2 bg-white rounded-xl border border-slate-200 p-5">
               <h3 className="text-sm font-semibold text-slate-700 mb-1">Tracked time across {rangeLabel}</h3>
-              <StackedColumns days={days} perDay={perDay} max={maxDay} />
+              <StackedDayBars days={days} perDay={perDay} labels={false} />
             </div>
             <div className="bg-white rounded-xl border border-slate-200 p-5">
               <h3 className="text-sm font-semibold text-slate-700 mb-3">Most tracked activities</h3>

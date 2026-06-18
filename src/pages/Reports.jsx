@@ -1,7 +1,7 @@
 import { useState, useEffect, useCallback, useMemo } from 'react'
 import {
   format, startOfWeek, endOfWeek, addWeeks, subWeeks,
-  eachDayOfInterval, startOfDay, endOfDay, startOfMonth,
+  eachDayOfInterval, startOfDay, endOfDay, startOfMonth, isSameDay,
 } from 'date-fns'
 import { Download, ChevronLeft, ChevronRight, ChevronDown } from 'lucide-react'
 import { supabase } from '../lib/supabase'
@@ -10,6 +10,7 @@ import { useData } from '../contexts/DataContext'
 import { formatDuration } from '../utils/formatters'
 import { exportToExcel } from '../utils/export'
 import DateRangePicker from '../components/DateRangePicker'
+import StackedDayBars from '../components/StackedDayBars'
 import toast from 'react-hot-toast'
 
 const WEEK_OPT = { weekStartsOn: 1 }
@@ -295,6 +296,25 @@ export default function Reports() {
   // Single grouping for the Detailed tab.
   const detailed = useMemo(() => flatGroup(entries, groupBy), [entries, groupBy])
 
+  // Per-day project breakdown for the Summary daily bar chart.
+  const summaryDays = useMemo(
+    () => (range?.from ? eachDayOfInterval({ start: range.from, end: range.to ?? range.from }) : []),
+    [range]
+  )
+  const summaryPerDay = useMemo(() => summaryDays.map(day => {
+    const dayEntries = entries.filter(e => isSameDay(new Date(e.start_time), day))
+    const projMap = {}
+    for (const e of dayEntries) {
+      const p = e.project
+        ? { id: e.project.id, name: e.project.name, color: e.project.color || CHART_COLORS[0] }
+        : { id: '_none', name: 'Without project', color: '#94a3b8' }
+      if (!projMap[p.id]) projMap[p.id] = { ...p, seconds: 0 }
+      projMap[p.id].seconds += e.duration ?? 0
+    }
+    const segments = Object.values(projMap)
+    return { total: segments.reduce((s, x) => s + x.seconds, 0), segments }
+  }), [entries, summaryDays])
+
   const weekStart = startOfWeek(weekRef, WEEK_OPT)
   const weekEnd   = endOfWeek(weekRef, WEEK_OPT)
   const weekDays  = eachDayOfInterval({ start: weekStart, end: weekEnd })
@@ -418,6 +438,10 @@ export default function Reports() {
           {tab === 'summary' && (
             <div className="space-y-5">
               {statCards}
+              <div className="bg-white rounded-xl border border-slate-200 p-5">
+                <h3 className="text-sm font-semibold text-slate-700 mb-1">Tracked time</h3>
+                <StackedDayBars days={summaryDays} perDay={summaryPerDay} labels="auto" />
+              </div>
               <div className="grid grid-cols-1 lg:grid-cols-3 gap-5">
                 <div className="lg:col-span-2 bg-white rounded-xl border border-slate-200 p-5">
                   <h3 className="text-sm font-semibold text-slate-700 mb-4">Time by {primaryLabel.toLowerCase()}</h3>
