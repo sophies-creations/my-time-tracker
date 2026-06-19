@@ -4,6 +4,7 @@ import { supabase } from '../lib/supabase'
 import { useAuth } from '../contexts/AuthContext'
 import { formatDuration, formatTime, groupByDate, formatDateHeader } from '../utils/formatters'
 import InlineDurationEdit from './InlineDurationEdit'
+import InlineDescriptionEdit from './InlineDescriptionEdit'
 import toast from 'react-hot-toast'
 
 function stackKey(entry) {
@@ -35,17 +36,21 @@ function EntryRow({ entry, isManager, onEdit, onResume, onDelete, onRefresh, ind
   const canEdit = isManager
   return (
     <div className={`flex items-center gap-3 px-4 py-3 group ${indented ? 'pl-10 bg-slate-50/40' : ''}`}>
-      <div className="flex-1 min-w-0">
-        <p className="text-sm font-medium text-slate-800 truncate flex items-center gap-2">
-          <span
-            className="w-2 h-2 rounded-full flex-shrink-0"
-            style={{ backgroundColor: entry.project?.color ?? '#cbd5e1' }}
-          />
+      <div className="flex-1 min-w-0 flex items-center gap-2 text-sm">
+        <span
+          className="w-2 h-2 rounded-full flex-shrink-0"
+          style={{ backgroundColor: entry.project?.color ?? '#cbd5e1' }}
+        />
+        <span className="font-medium text-slate-800 truncate max-w-[12rem] shrink-0">
           {entry.project?.name ?? <span className="text-slate-400">No project</span>}
-        </p>
-        <p className="text-xs text-slate-500 truncate mt-0.5 pl-4">
-          {entry.description || <span className="text-slate-400 italic">No description</span>}
-        </p>
+        </span>
+        <span className="text-slate-300 shrink-0">·</span>
+        <InlineDescriptionEdit
+          entry={entry}
+          canEdit={canEdit}
+          onSaved={onRefresh}
+          className="text-xs text-slate-500 truncate flex-1 min-w-0 block"
+        />
       </div>
       <span className="text-xs text-slate-400 hidden sm:block flex-shrink-0 font-mono tabular-nums">
         {formatTime(entry.start_time)}–{entry.end_time ? formatTime(entry.end_time) : '...'}
@@ -99,20 +104,21 @@ function StackRow({ group, isOpen, onToggle, onResume }) {
       onClick={onToggle}
       className="w-full flex items-center gap-3 px-4 py-3 text-left hover:bg-slate-50 transition-colors"
     >
-      <div className="flex-1 min-w-0">
-        <p className="text-sm font-medium text-slate-800 truncate flex items-center gap-2">
-          <span
-            className="w-2 h-2 rounded-full flex-shrink-0"
-            style={{ backgroundColor: sample.project?.color ?? '#cbd5e1' }}
-          />
+      <div className="flex-1 min-w-0 flex items-center gap-2 text-sm">
+        <span
+          className="w-2 h-2 rounded-full flex-shrink-0"
+          style={{ backgroundColor: sample.project?.color ?? '#cbd5e1' }}
+        />
+        <span className="font-medium text-slate-800 truncate max-w-[12rem] shrink-0">
           {sample.project?.name ?? <span className="text-slate-400">No project</span>}
-          <span className="inline-flex items-center justify-center min-w-[1.25rem] h-5 px-1.5 rounded-full bg-orchid-100 text-orchid-800 text-[10px] font-bold tabular-nums">
-            {group.entries.length}
-          </span>
-        </p>
-        <p className="text-xs text-slate-500 truncate mt-0.5 pl-4">
+        </span>
+        <span className="inline-flex items-center justify-center min-w-[1.25rem] h-5 px-1.5 rounded-full bg-orchid-100 text-orchid-800 text-[10px] font-bold tabular-nums shrink-0">
+          {group.entries.length}
+        </span>
+        <span className="text-slate-300 shrink-0">·</span>
+        <span className="text-xs text-slate-500 truncate flex-1 min-w-0">
           {sample.description || <span className="text-slate-400 italic">No description</span>}
-        </p>
+        </span>
       </div>
       <span className="text-xs text-slate-400 hidden sm:block flex-shrink-0 font-mono tabular-nums">
         {formatTime(earliest.start_time)}–{latest.end_time ? formatTime(latest.end_time) : '...'}
