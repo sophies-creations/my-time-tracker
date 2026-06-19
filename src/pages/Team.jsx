@@ -100,12 +100,10 @@ export default function Team() {
             </div>
             <div className="flex-1 min-w-0">
               <p className="text-sm font-medium text-slate-800 truncate">
-                {member.full_name || member.email}
+                {member.full_name || <span className="italic text-slate-400 font-normal">Unnamed</span>}
                 {!member.active && <span className="ml-2 text-xs text-red-500 font-normal">Deactivated</span>}
               </p>
-              {member.full_name && (
-                <p className="text-xs text-slate-400 truncate">{member.email}</p>
-              )}
+              <p className="text-xs text-slate-400 truncate">{member.email}</p>
             </div>
             <div className="flex items-center gap-2">
               {isAdmin && member.id !== myProfile?.id ? (

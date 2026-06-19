@@ -1,5 +1,5 @@
-import { useState, useRef, useEffect } from 'react'
-import { ChevronDown, X } from 'lucide-react'
+import { useState, useRef, useEffect, Fragment } from 'react'
+import { ChevronDown, X, Check } from 'lucide-react'
 
 // Compact Clockify-style filter pill. Click the chip to open a popover
 // whose content is provided by children. When `hasValue` is true the
@@ -61,13 +61,38 @@ export default function FilterPill({ label, valueLabel = '', hasValue, onClear, 
   )
 }
 
-export function SelectableList({ options, value, onChange, search = true }) {
+// `options` is a flat list. `groups` is `[{ label, options }]`; when
+// provided, options are rendered under group headers (used for Active /
+// Inactive splitting). Pass `multi` for checkbox-style selection where
+// `value` is an array and `onChange` receives the next array.
+export function SelectableList({ options, groups, value, onChange, multi = false, search = true }) {
   const [q, setQ] = useState('')
   const lc = q.trim().toLowerCase()
-  const filtered = lc ? options.filter(o => o.label.toLowerCase().includes(lc)) : options
+
+  const allOptions = groups ? groups.flatMap(g => g.options) : (options ?? [])
+  const matchFn = o => !lc || o.label.toLowerCase().includes(lc)
+  const shouldShowSearch = search && allOptions.length > 8
+
+  const renderedGroups = groups
+    ? groups.map(g => ({ label: g.label, options: g.options.filter(matchFn) })).filter(g => g.options.length)
+    : [{ label: null, options: allOptions.filter(matchFn) }]
+
+  const hasMatches = renderedGroups.some(g => g.options.length > 0)
+
+  const isSelected = v => (multi ? Array.isArray(value) && value.includes(v) : v === value)
+
+  function pick(v) {
+    if (multi) {
+      const arr = Array.isArray(value) ? value : []
+      onChange(arr.includes(v) ? arr.filter(x => x !== v) : [...arr, v])
+    } else {
+      onChange(v)
+    }
+  }
+
   return (
     <div>
-      {search && options.length > 8 && (
+      {shouldShowSearch && (
         <div className="p-2 border-b border-slate-100">
           <input
             autoFocus
@@ -80,19 +105,50 @@ export function SelectableList({ options, value, onChange, search = true }) {
         </div>
       )}
       <div className="max-h-64 overflow-y-auto py-1">
-        {filtered.map(o => (
-          <button
-            key={o.value}
-            onClick={() => onChange(o.value)}
-            className={`w-full text-left text-sm px-3 py-1.5 hover:bg-slate-50 ${o.value === value ? 'text-orchid-700 bg-orchid-50/60 font-medium' : 'text-slate-700'}`}
-          >
-            {o.label}
-          </button>
+        {renderedGroups.map((g, gi) => (
+          <Fragment key={gi}>
+            {g.label && (
+              <p className="px-3 pt-1.5 pb-0.5 text-[10px] font-semibold text-slate-400 uppercase tracking-wide bg-slate-50/40">
+                {g.label}
+              </p>
+            )}
+            {g.options.map(o => {
+              const selected = isSelected(o.value)
+              return (
+                <button
+                  key={o.value}
+                  onClick={() => pick(o.value)}
+                  className={`w-full text-left text-sm px-3 py-1.5 flex items-center gap-2 hover:bg-slate-50 ${
+                    !multi && selected ? 'text-orchid-700 bg-orchid-50/60 font-medium' : 'text-slate-700'
+                  }`}
+                >
+                  {multi && (
+                    <span className={`w-4 h-4 rounded border flex items-center justify-center shrink-0 transition-colors ${
+                      selected ? 'bg-orchid-600 border-orchid-600' : 'border-slate-300'
+                    }`}>
+                      {selected && <Check size={10} className="text-white" />}
+                    </span>
+                  )}
+                  <span className="truncate">{o.label}</span>
+                </button>
+              )
+            })}
+          </Fragment>
         ))}
-        {!filtered.length && (
+        {!hasMatches && (
           <p className="px-3 py-2 text-xs text-slate-400">No matches</p>
         )}
       </div>
     </div>
   )
+}
+
+// Helper for pill `valueLabel` in multi mode.
+export function multiValueLabel(values, allOptions) {
+  if (!Array.isArray(values) || !values.length) return ''
+  if (values.length === 1) {
+    const opt = allOptions.find(o => o.value === values[0])
+    return opt?.label ?? ''
+  }
+  return `${values.length} selected`
 }

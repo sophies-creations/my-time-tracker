@@ -8,6 +8,7 @@ import ManualEntryModal from './ManualEntryModal'
 
 const BAR_HEIGHT_PX  = 56  // h-14
 const PEEK_HEIGHT_PX = 8
+const TOPBAR_HEIGHT_PX = 48  // h-12
 
 export default function Layout() {
   const { user } = useAuth()
@@ -31,6 +32,12 @@ export default function Layout() {
   const canCollapse = !isTrackerPage && !pinned
   const showTimer   = !canCollapse || hovering || focusWithin
 
+  // Main reserves only the space that's always visible: full bar height
+  // when always-shown (tracker / pinned), peek strip otherwise. The bar
+  // itself is an absolute overlay so revealing it via hover does not
+  // shift the page content.
+  const reservedTopPx = isTrackerPage || pinned ? BAR_HEIGHT_PX : PEEK_HEIGHT_PX
+
   useEffect(() => {
     function onOpen(e) {
       setModal({ open: true, entry: e.detail?.entry ?? null })
@@ -42,15 +49,24 @@ export default function Layout() {
   return (
     <div className="flex h-screen bg-slate-50 overflow-hidden">
       <Sidebar />
-      <div className="flex flex-col flex-1 min-w-0">
+      <div className="flex flex-col flex-1 min-w-0 relative">
         <TopBar />
+        <main
+          className="flex-1 overflow-y-auto px-6 pb-6"
+          style={{ paddingTop: `${reservedTopPx + 24}px` }}
+        >
+          <Outlet />
+        </main>
         <div
           onMouseEnter={() => setHovering(true)}
           onMouseLeave={() => setHovering(false)}
           onFocus={() => setFocusWithin(true)}
           onBlur={() => setFocusWithin(false)}
-          className="relative z-20 flex-shrink-0 transition-[height] duration-200"
-          style={{ height: `${showTimer ? BAR_HEIGHT_PX : PEEK_HEIGHT_PX}px` }}
+          className="absolute left-0 right-0 z-20 transition-[height] duration-200"
+          style={{
+            top: `${TOPBAR_HEIGHT_PX}px`,
+            height: `${showTimer ? BAR_HEIGHT_PX : PEEK_HEIGHT_PX}px`,
+          }}
         >
           <div
             className="absolute inset-x-0 top-0 transition-transform duration-200"
@@ -68,9 +84,6 @@ export default function Layout() {
             </div>
           )}
         </div>
-        <main className="flex-1 overflow-y-auto p-6">
-          <Outlet />
-        </main>
       </div>
 
       {modal.open && (

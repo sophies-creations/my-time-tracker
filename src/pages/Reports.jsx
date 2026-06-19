@@ -11,7 +11,7 @@ import { formatDuration } from '../utils/formatters'
 import { exportToExcel } from '../utils/export'
 import DateRangePicker from '../components/DateRangePicker'
 import StackedDayBars, { buildBuckets } from '../components/StackedDayBars'
-import FilterPill, { SelectableList } from '../components/FilterPill'
+import FilterPill, { SelectableList, multiValueLabel } from '../components/FilterPill'
 import InlineDurationEdit from '../components/InlineDurationEdit'
 import toast from 'react-hot-toast'
 
@@ -141,22 +141,22 @@ function DonutChart({ segments, total, size = 168 }) {
 
 export default function Reports() {
   const { isManager } = useAuth()
-  const { projects, clients } = useData()
+  const { clients } = useData()
   const [tab, setTab] = useState('summary')
 
   const initialFrom = startOfWeek(new Date(), WEEK_OPT)
   const initialTo   = endOfWeek(new Date(), WEEK_OPT)
   const [range, setRange] = useState({ from: initialFrom, to: initialTo })
 
-  const [filterProject,     setFilterProject]     = useState('')
-  const [filterUser,        setFilterUser]        = useState('')
-  const [filterClient,      setFilterClient]      = useState('')
+  const [filterProjects,    setFilterProjects]    = useState([])
+  const [filterUsers,       setFilterUsers]       = useState([])
+  const [filterClients,     setFilterClients]     = useState([])
   const [filterDescription, setFilterDescription] = useState('')
   const [filterStatus,      setFilterStatus]      = useState('completed')
 
-  const [stagedProject,     setStagedProject]     = useState('')
-  const [stagedUser,        setStagedUser]        = useState('')
-  const [stagedClient,      setStagedClient]      = useState('')
+  const [stagedProjects,    setStagedProjects]    = useState([])
+  const [stagedUsers,       setStagedUsers]       = useState([])
+  const [stagedClients,     setStagedClients]     = useState([])
   const [stagedDescription, setStagedDescription] = useState('')
   const [stagedStatus,      setStagedStatus]      = useState('completed')
 
@@ -165,11 +165,15 @@ export default function Reports() {
   const [tertiaryBy,  setTertiaryBy]  = useState('none')
   const [expanded,    setExpanded]    = useState(() => new Set())
   const [entries, setEntries]         = useState([])
-  const [users, setUsers]             = useState([])
+  const [allUsers, setAllUsers]       = useState([])
+  const [allProjects, setAllProjects] = useState([])
   const [loading, setLoading]         = useState(false)
   const [weekRef, setWeekRef]         = useState(new Date())
 
-  useEffect(() => { if (isManager) fetchUsers() }, [isManager])
+  useEffect(() => {
+    if (isManager) fetchUsers()
+    fetchAllProjects()
+  }, [isManager])
 
   // Reset tertiary if its level becomes invalid.
   useEffect(() => {
@@ -191,13 +195,13 @@ export default function Reports() {
         .order('start_time', { ascending: false })
       if (filterStatus === 'completed')    q = q.eq('is_running', false)
       else if (filterStatus === 'running') q = q.eq('is_running', true)
-      if (filterProject) q = q.eq('project_id', filterProject)
-      if (filterUser)    q = q.eq('user_id', filterUser)
+      if (filterProjects.length) q = q.in('project_id', filterProjects)
+      if (filterUsers.length)    q = q.in('user_id', filterUsers)
       if (filterDescription.trim()) q = q.ilike('description', `%${filterDescription.trim()}%`)
       const { data, error } = await q
       if (error) throw error
-      const filtered = filterClient
-        ? (data ?? []).filter(e => e.project?.client_id === filterClient)
+      const filtered = filterClients.length
+        ? (data ?? []).filter(e => filterClients.includes(e.project?.client_id))
         : (data ?? [])
       setEntries(filtered)
     } catch (err) {
@@ -206,27 +210,33 @@ export default function Reports() {
     } finally {
       setLoading(false)
     }
-  }, [range, filterProject, filterUser, filterClient, filterDescription, filterStatus])
+  }, [range, filterProjects, filterUsers, filterClients, filterDescription, filterStatus])
 
   useEffect(() => { fetchEntries() }, [fetchEntries])
 
   async function fetchUsers() {
     const { data } = await supabase.from('profiles')
-      .select('id, full_name, email').neq('role', 'client').order('full_name')
-    setUsers(data ?? [])
+      .select('id, full_name, email, active').neq('role', 'client').order('full_name')
+    setAllUsers(data ?? [])
+  }
+
+  async function fetchAllProjects() {
+    const { data } = await supabase.from('projects')
+      .select('id, name, archived').order('name')
+    setAllProjects(data ?? [])
   }
 
   function applyFilters() {
-    setFilterProject(stagedProject)
-    setFilterUser(stagedUser)
-    setFilterClient(stagedClient)
+    setFilterProjects(stagedProjects)
+    setFilterUsers(stagedUsers)
+    setFilterClients(stagedClients)
     setFilterDescription(stagedDescription)
     setFilterStatus(stagedStatus)
   }
 
   function resetFilters() {
-    setStagedProject(''); setStagedUser(''); setStagedClient(''); setStagedDescription(''); setStagedStatus('completed')
-    setFilterProject(''); setFilterUser(''); setFilterClient(''); setFilterDescription(''); setFilterStatus('completed')
+    setStagedProjects([]); setStagedUsers([]); setStagedClients([]); setStagedDescription(''); setStagedStatus('completed')
+    setFilterProjects([]); setFilterUsers([]); setFilterClients([]); setFilterDescription(''); setFilterStatus('completed')
   }
 
   async function handleExport() {
@@ -308,68 +318,103 @@ export default function Reports() {
   const secondaryLabel = SECONDARY_OPTIONS.find(o => o.key === secondaryBy)?.label
   const tertiaryLabel  = SECONDARY_OPTIONS.find(o => o.key === tertiaryBy)?.label
 
+  const arraysEqual = (a, b) =>
+    a.length === b.length && a.every(v => b.includes(v))
+
   const filtersDirty =
-    stagedProject     !== filterProject ||
-    stagedUser        !== filterUser ||
-    stagedClient      !== filterClient ||
+    !arraysEqual(stagedProjects, filterProjects) ||
+    !arraysEqual(stagedUsers,    filterUsers)    ||
+    !arraysEqual(stagedClients,  filterClients)  ||
     stagedDescription !== filterDescription ||
     stagedStatus      !== filterStatus
 
-  const userOptions    = [{ value: '', label: 'All users' }, ...users.map(u => ({ value: u.id, label: u.full_name || u.email }))]
-  const clientOptions  = [{ value: '', label: 'All clients' }, ...clients.map(c => ({ value: c.id, label: c.name }))]
-  const projectOptions = [{ value: '', label: 'All projects' }, ...projects.map(p => ({ value: p.id, label: p.name }))]
-  const statusOptions  = STATUS_OPTIONS.map(s => ({ value: s.key, label: s.label }))
+  // User / Project filter dropdowns split into Active and Inactive groups.
+  const userGroups = useMemo(() => {
+    const active = allUsers.filter(u => u.active !== false)
+    const inactive = allUsers.filter(u => u.active === false)
+    const labelFor = u => u.full_name || u.email
+    const groups = [{
+      label: 'Active',
+      options: active.map(u => ({ value: u.id, label: labelFor(u) })),
+    }]
+    if (inactive.length) {
+      groups.push({
+        label: 'Inactive',
+        options: inactive.map(u => ({ value: u.id, label: labelFor(u) })),
+      })
+    }
+    return groups
+  }, [allUsers])
 
-  const userLabel    = userOptions.find(o => o.value === stagedUser)?.label    ?? ''
-  const clientLabel  = clientOptions.find(o => o.value === stagedClient)?.label  ?? ''
-  const projectLabel = projectOptions.find(o => o.value === stagedProject)?.label ?? ''
-  const statusLabel  = statusOptions.find(o => o.value === stagedStatus)?.label ?? ''
+  const projectGroups = useMemo(() => {
+    const active = allProjects.filter(p => !p.archived)
+    const archived = allProjects.filter(p => p.archived)
+    const groups = [{
+      label: 'Active',
+      options: active.map(p => ({ value: p.id, label: p.name })),
+    }]
+    if (archived.length) {
+      groups.push({
+        label: 'Inactive',
+        options: archived.map(p => ({ value: p.id, label: p.name })),
+      })
+    }
+    return groups
+  }, [allProjects])
+
+  const clientOptions = useMemo(() =>
+    clients.map(c => ({ value: c.id, label: c.name })),
+    [clients]
+  )
+  const statusOptions = STATUS_OPTIONS.map(s => ({ value: s.key, label: s.label }))
+
+  const allUserOptionsFlat    = useMemo(() => userGroups.flatMap(g => g.options),    [userGroups])
+  const allProjectOptionsFlat = useMemo(() => projectGroups.flatMap(g => g.options), [projectGroups])
+
+  const statusLabel = statusOptions.find(o => o.value === stagedStatus)?.label ?? ''
 
   const sharedFilterRow = (
     <div className="bg-white rounded-xl border border-slate-200 p-3 mb-5 flex flex-wrap items-center gap-2">
       {isManager && (
         <FilterPill
           label="Team / User"
-          valueLabel={userLabel}
-          hasValue={!!stagedUser}
-          onClear={() => setStagedUser('')}
+          valueLabel={multiValueLabel(stagedUsers, allUserOptionsFlat)}
+          hasValue={stagedUsers.length > 0}
+          onClear={() => setStagedUsers([])}
         >
-          {close => (
-            <SelectableList
-              options={userOptions}
-              value={stagedUser}
-              onChange={v => { setStagedUser(v); close() }}
-            />
-          )}
+          <SelectableList
+            multi
+            groups={userGroups}
+            value={stagedUsers}
+            onChange={setStagedUsers}
+          />
         </FilterPill>
       )}
       <FilterPill
         label="Client"
-        valueLabel={clientLabel}
-        hasValue={!!stagedClient}
-        onClear={() => setStagedClient('')}
+        valueLabel={multiValueLabel(stagedClients, clientOptions)}
+        hasValue={stagedClients.length > 0}
+        onClear={() => setStagedClients([])}
       >
-        {close => (
-          <SelectableList
-            options={clientOptions}
-            value={stagedClient}
-            onChange={v => { setStagedClient(v); close() }}
-          />
-        )}
+        <SelectableList
+          multi
+          options={clientOptions}
+          value={stagedClients}
+          onChange={setStagedClients}
+        />
       </FilterPill>
       <FilterPill
         label="Project"
-        valueLabel={projectLabel}
-        hasValue={!!stagedProject}
-        onClear={() => setStagedProject('')}
+        valueLabel={multiValueLabel(stagedProjects, allProjectOptionsFlat)}
+        hasValue={stagedProjects.length > 0}
+        onClear={() => setStagedProjects([])}
       >
-        {close => (
-          <SelectableList
-            options={projectOptions}
-            value={stagedProject}
-            onChange={v => { setStagedProject(v); close() }}
-          />
-        )}
+        <SelectableList
+          multi
+          groups={projectGroups}
+          value={stagedProjects}
+          onChange={setStagedProjects}
+        />
       </FilterPill>
       <FilterPill
         label="Description"
@@ -486,37 +531,23 @@ export default function Reports() {
     </div>
   )
 
-  // Simpler filter bar for the Detailed tab — immediate, no Apply step.
-  const detailedFilterBar = (
-    <div className="bg-white rounded-xl border border-slate-200 p-4 mb-5 flex flex-wrap items-center gap-3">
-      <select
-        value={filterProject}
-        onChange={e => { setFilterProject(e.target.value); setStagedProject(e.target.value) }}
-        className="border border-slate-200 rounded-lg px-3 py-2 text-sm text-slate-600 outline-none focus:ring-2 focus:ring-orchid-500 bg-white"
+  // Detailed tab reuses the multi-select pill row plus a one-pill Group by.
+  const detailedGroupByRow = (
+    <div className="bg-white rounded-xl border border-slate-200 p-3 mb-5 flex flex-wrap items-center gap-2">
+      <FilterPill
+        label="Group by"
+        valueLabel={primaryLabel}
+        hasValue
       >
-        <option value="">All projects</option>
-        {projects.map(p => <option key={p.id} value={p.id}>{p.name}</option>)}
-      </select>
-      {isManager && (
-        <select
-          value={filterUser}
-          onChange={e => { setFilterUser(e.target.value); setStagedUser(e.target.value) }}
-          className="border border-slate-200 rounded-lg px-3 py-2 text-sm text-slate-600 outline-none focus:ring-2 focus:ring-orchid-500 bg-white"
-        >
-          <option value="">All users</option>
-          {users.map(u => <option key={u.id} value={u.id}>{u.full_name || u.email}</option>)}
-        </select>
-      )}
-      <div className="ml-auto flex items-center gap-2">
-        <label className="text-xs font-medium text-slate-500 uppercase tracking-wide">Group by</label>
-        <select
-          value={groupBy}
-          onChange={e => { setGroupBy(e.target.value); setExpanded(new Set()) }}
-          className="border border-slate-200 rounded-lg px-3 py-2 text-sm text-slate-700 outline-none focus:ring-2 focus:ring-orchid-500 bg-white"
-        >
-          {GROUP_OPTIONS.map(o => <option key={o.key} value={o.key}>{o.label}</option>)}
-        </select>
-      </div>
+        {close => (
+          <SelectableList
+            options={GROUP_OPTIONS.map(o => ({ value: o.key, label: o.label }))}
+            value={groupBy}
+            onChange={v => { setGroupBy(v); setExpanded(new Set()); close() }}
+            search={false}
+          />
+        )}
+      </FilterPill>
     </div>
   )
 
@@ -548,8 +579,8 @@ export default function Reports() {
         ))}
       </div>
 
-      {(tab === 'summary' || tab === 'weekly') && sharedFilterRow}
-      {tab === 'detailed' && detailedFilterBar}
+      {sharedFilterRow}
+      {tab === 'detailed' && detailedGroupByRow}
 
       {loading ? (
         <div className="flex items-center justify-center py-16">
