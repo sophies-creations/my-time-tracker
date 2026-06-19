@@ -125,15 +125,6 @@ export default function ManualEntryModal({ entry, onClose, onSaved }) {
 
         <div className="px-6 py-5 space-y-4">
           <div>
-            <label className="block text-xs font-medium text-slate-600 mb-1.5">Description</label>
-            <input
-              type="text" value={description} onChange={e => setDescription(e.target.value)}
-              placeholder="What did you work on?" autoFocus
-              className="w-full border border-slate-200 rounded-lg px-3 py-2 text-sm outline-none focus:ring-2 focus:ring-orchid-500 focus:border-transparent"
-            />
-          </div>
-
-          <div>
             <label className="block text-xs font-medium text-slate-600 mb-1.5 flex items-center gap-1.5">
               Project
               {projectLocked && (
@@ -151,6 +142,15 @@ export default function ManualEntryModal({ entry, onClose, onSaved }) {
               <option value="">No project</option>
               {projects.map(p => <option key={p.id} value={p.id}>{p.name}</option>)}
             </select>
+          </div>
+
+          <div>
+            <label className="block text-xs font-medium text-slate-600 mb-1.5">Description</label>
+            <input
+              type="text" value={description} onChange={e => setDescription(e.target.value)}
+              placeholder="What did you work on?" autoFocus
+              className="w-full border border-slate-200 rounded-lg px-3 py-2 text-sm outline-none focus:ring-2 focus:ring-orchid-500 focus:border-transparent"
+            />
           </div>
 
           <div className="grid grid-cols-3 gap-3">

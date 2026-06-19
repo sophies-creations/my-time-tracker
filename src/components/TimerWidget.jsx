@@ -55,10 +55,14 @@ export default function TimerWidget({ pinned = false, onTogglePin, showPinContro
   useEffect(() => {
     function onResume(e) {
       const { description: d, projectId: pid } = e.detail ?? {}
-      setDescription(d ?? '')
-      setProjectId(pid ?? '')
-      if (!running && pid) {
-        setTimeout(() => handleStartWith(d ?? '', pid), 0)
+      // Resume always starts a fresh entry. If a timer is running it gets
+      // stopped and saved first — never transfer elapsed time across
+      // projects.
+      if (pid) {
+        setTimeout(() => handleStartWith(d ?? '', pid, { forceFresh: true }), 0)
+      } else {
+        setDescription(d ?? '')
+        setProjectId('')
       }
     }
     window.addEventListener('timer:resume', onResume)
@@ -81,7 +85,7 @@ export default function TimerWidget({ pinned = false, onTogglePin, showPinContro
     }
   }
 
-  async function handleStartWith(desc, pid) {
+  async function handleStartWith(desc, pid, { forceFresh = false } = {}) {
     if (!pid) {
       toast.error('Pick a project first')
       setProjectOpen(true)
@@ -93,7 +97,10 @@ export default function TimerWidget({ pinned = false, onTogglePin, showPinContro
       .eq('user_id', user.id)
       .eq('is_running', true)
       .maybeSingle()
-    if (existing) {
+
+    if (existing && !forceFresh) {
+      // Plain Start with a timer already in the DB — adopt it so we don't
+      // create two running entries for the same user.
       setRunning(existing)
       setDescription(existing.description ?? '')
       setProjectId(existing.project_id ?? '')
@@ -102,6 +109,38 @@ export default function TimerWidget({ pinned = false, onTogglePin, showPinContro
       toast('Resumed your running timer')
       return
     }
+
+    if (existing && forceFresh) {
+      // Resume path: stop+save the running entry before starting fresh.
+      const endTime = new Date()
+      const stopDuration = Math.floor((endTime - new Date(existing.start_time)) / 1000)
+      const updates = {
+        end_time:   endTime.toISOString(),
+        duration:   stopDuration,
+        is_running: false,
+      }
+      // If the bar reflects this same entry, preserve the user's pending
+      // edits — mirrors the Stop button behaviour.
+      if (running && running.id === existing.id) {
+        updates.description = description.trim()
+        updates.project_id  = projectId || null
+        updates.billable    = billable
+      }
+      const { error: stopErr } = await supabase
+        .from('time_entries').update(updates).eq('id', existing.id)
+      if (stopErr) {
+        console.error('[Timer] stop failed during resume:', stopErr)
+        toast.error('Could not stop the running timer')
+        return
+      }
+      setRunning(null)
+      setElapsed(0)
+      window.dispatchEvent(new CustomEvent('timeentry:saved'))
+    }
+
+    // Reflect the resumed values in the bar before insert.
+    setDescription(desc ?? '')
+    setProjectId(pid)
 
     const { data, error } = await supabase
       .from('time_entries')

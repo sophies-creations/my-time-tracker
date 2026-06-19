@@ -148,7 +148,7 @@ function Tooltip({ bucket, index, count }) {
 
   return (
     <div
-      className="absolute pointer-events-none z-40 bg-slate-900 text-white rounded-lg shadow-xl px-3 py-2 w-[16rem]"
+      className="absolute pointer-events-none z-50 bg-slate-900 text-white rounded-lg shadow-xl px-3 py-2 w-[16rem]"
       style={{
         left: `${centerPct}%`,
         top: '-8px',

@@ -10,7 +10,7 @@ const NAV = [
   { to: '/tracker',   Icon: Clock,            label: 'Time Tracker' },
   { to: '/dashboard', Icon: LayoutDashboard,  label: 'Dashboard' },
   { to: '/reports',   Icon: BarChart2,         label: 'Reports' },
-  { to: '/calendar',  Icon: CalendarDays,      label: 'Calendar' },
+  { to: '/calendar',  Icon: CalendarDays,      label: 'Schedule' },
   { to: '/projects',  Icon: FolderOpen,        label: 'Projects' },
   { to: '/team',      Icon: Users,             label: 'Team',      managerOnly: true },
   { to: '/clients',   Icon: Building2,         label: 'Clients',   adminOnly: true },

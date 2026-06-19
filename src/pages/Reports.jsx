@@ -35,6 +35,16 @@ const STATUS_OPTIONS = [
   { key: 'all',       label: 'All entries' },
 ]
 
+const ROLE_LABELS = { admin: 'Admin', manager: 'Manager', member: 'Member', client: 'Client' }
+
+export function formatUserLabel(user) {
+  if (!user) return 'Unknown user'
+  const name = user.full_name || user.email || 'Unknown user'
+  const role = user.role
+  if (!role) return name
+  return `${name} (${ROLE_LABELS[role] ?? role})`
+}
+
 function groupKey(entry, by) {
   switch (by) {
     case 'project':     return entry.project?.id ?? '_none'
@@ -58,7 +68,7 @@ function groupMeta(entry, by) {
     case 'client':
       return { label: entry.project?.client?.name ?? 'No client', color: null }
     case 'user':
-      return { label: entry.user?.full_name || entry.user?.email || 'Unknown user', color: null }
+      return { label: formatUserLabel(entry.user), color: null }
     case 'description':
       return { label: entry.description?.trim() || 'No description', color: null }
     case 'month':
@@ -189,7 +199,7 @@ export default function Reports() {
       const endISO   = endOfDay(range.to ?? range.from).toISOString()
       let q = supabase
         .from('time_entries')
-        .select(`*, project:projects(id, name, color, client_id, client:clients!projects_client_id_fkey(id, name)), user:profiles(id, full_name, email)`)
+        .select(`*, project:projects(id, name, color, client_id, client:clients!projects_client_id_fkey(id, name)), user:profiles(id, full_name, email, role)`)
         .gte('start_time', startISO)
         .lte('start_time', endISO)
         .order('start_time', { ascending: false })
@@ -590,14 +600,14 @@ export default function Reports() {
         <>
           {tab === 'summary' && (
             <div className="space-y-5">
-              <div className="rounded-xl overflow-hidden border border-slate-200 shadow-sm">
-                <div className="bg-orchid-50/70 border-b border-orchid-100 px-5 py-3 flex items-center justify-between">
+              <div className="rounded-xl border border-slate-200 shadow-sm">
+                <div className="bg-orchid-50/70 border-b border-orchid-100 rounded-t-xl px-5 py-3 flex items-center justify-between">
                   <span className="text-xs uppercase tracking-wide text-orchid-700 font-semibold">Total</span>
                   <span className="text-xl font-bold font-mono tabular-nums text-orchid-900">
                     {formatDuration(totalSecs)}
                   </span>
                 </div>
-                <div className="bg-white p-5">
+                <div className="bg-white rounded-b-xl p-5">
                   <StackedDayBars buckets={chartBuckets} labels="auto" />
                 </div>
               </div>
@@ -778,7 +788,7 @@ export default function Reports() {
                                 <td className="px-4 py-2.5 text-slate-600 max-w-xs truncate">
                                   {entry.description || <span className="text-slate-400 italic">No description</span>}
                                 </td>
-                                {isManager && <td className="px-4 py-2.5 text-slate-600">{entry.user?.full_name || entry.user?.email || '—'}</td>}
+                                {isManager && <td className="px-4 py-2.5 text-slate-600">{entry.user ? formatUserLabel(entry.user) : '—'}</td>}
                                 <td className="px-4 py-2.5 text-slate-500">{format(new Date(entry.start_time), 'yyyy-MM-dd')}</td>
                                 <td className="px-4 py-2.5 text-right">
                                   <InlineDurationEdit entry={entry} canEdit={isManager} onSaved={fetchEntries} className="text-slate-700" />

@@ -1,5 +1,16 @@
 import { formatDuration } from './formatters'
 
+const ROLE_LABELS = { admin: 'Admin', manager: 'Manager', member: 'Member', client: 'Client' }
+
+function formatUserLabel(user) {
+  if (!user) return ''
+  const name = user.full_name || user.email || ''
+  if (!name) return ''
+  const role = user.role
+  if (!role) return name
+  return `${name} (${ROLE_LABELS[role] ?? role})`
+}
+
 // Backwards-compatible export. Old callers pass an entries array; new
 // callers pass { mode, ... } so the export mirrors the view they're on.
 //
@@ -118,7 +129,7 @@ async function exportDetailed({ entries = [] }, filename) {
     entry.description || '',
     entry.project?.name ?? '',
     entry.project?.client?.name ?? '',
-    entry.user?.full_name || entry.user?.email || '',
+    formatUserLabel(entry.user),
   ])
   const aoa = [headerRow, ...rows]
   const ws = XLSX.utils.aoa_to_sheet(aoa)
