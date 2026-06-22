@@ -2,6 +2,11 @@ import { formatDuration } from './formatters'
 
 const ROLE_LABELS = { admin: 'Admin', manager: 'Manager', member: 'Member', client: 'Client' }
 
+// European format: comma as the decimal separator (e.g. "1,5" not "1.5").
+function euDecimal(n, decimals = 2) {
+  return n.toFixed(decimals).replace('.', ',')
+}
+
 function formatUserLabel(user) {
   if (!user) return ''
   const name = user.full_name || user.email || ''
@@ -62,7 +67,7 @@ async function exportSummary({ groups = [], primaryLabel = 'Group', secondaryLab
   const hasSecondary = !!secondaryLabel && groups.some(g => g.children && g.children.length)
   const hasTertiary  = hasSecondary && !!tertiaryLabel
     && groups.some(g => g.children?.some(c => c.children && c.children.length))
-  const pct = secs => totalSecs ? `${((secs / totalSecs) * 100).toFixed(1)}%` : '0.0%'
+  const pct = secs => totalSecs ? `${euDecimal((secs / totalSecs) * 100, 1)}%` : '0,0%'
 
   const labelCols = [primaryLabel,
     ...(hasSecondary ? [secondaryLabel] : []),
@@ -74,7 +79,7 @@ async function exportSummary({ groups = [], primaryLabel = 'Group', secondaryLab
   function pushRow(level, labels, seconds) {
     const cells = labelCols.map((_, i) => labels[i] ?? '')
     cells.push(formatDuration(seconds))
-    cells.push((seconds / 3600).toFixed(2))
+    cells.push(euDecimal(seconds / 3600, 2))
     cells.push(pct(seconds))
     rows.push({ cells, level })
   }
@@ -125,7 +130,7 @@ async function exportDetailed({ entries = [] }, filename) {
     entry.start_time.slice(11, 19),
     entry.end_time?.slice(11, 19) ?? '',
     formatDuration(entry.duration ?? 0),
-    ((entry.duration ?? 0) / 3600).toFixed(2),
+    euDecimal((entry.duration ?? 0) / 3600, 2),
     entry.description || '',
     entry.project?.name ?? '',
     entry.project?.client?.name ?? '',

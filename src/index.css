@@ -13,3 +13,33 @@
   --color-orchid-900: #6e2d67;
   --color-orchid-950: #420140;
 }
+
+/* Compact, Clockify-style date picker — tighter cells and chrome than
+   react-day-picker's defaults. */
+.compact-daypicker .rdp-root {
+  --rdp-accent-color: #c44fba;
+  --rdp-accent-background-color: #fae8fa;
+  --rdp-day-width: 28px;
+  --rdp-day-height: 28px;
+  --rdp-day_button-width: 26px;
+  --rdp-day_button-height: 26px;
+  --rdp-day_button-border-radius: 7px;
+  --rdp-nav-height: 1.75rem;
+  --rdp-nav_button-width: 1.5rem;
+  --rdp-nav_button-height: 1.5rem;
+  --rdp-weekday-padding: 0.2rem 0;
+  font-size: 12px;
+}
+.compact-daypicker .rdp-month_caption {
+  height: 1.5rem;
+  font-size: 12.5px;
+  font-weight: 600;
+}
+.compact-daypicker .rdp-weekday {
+  font-size: 9.5px;
+  font-weight: 600;
+  text-transform: uppercase;
+}
+.compact-daypicker .rdp-selected {
+  font-size: inherit;
+}

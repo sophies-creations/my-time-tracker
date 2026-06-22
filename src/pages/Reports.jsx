@@ -1,4 +1,4 @@
-import { useState, useEffect, useCallback, useMemo } from 'react'
+import { useState, useEffect, useCallback, useMemo, useRef } from 'react'
 import {
   format, startOfWeek, endOfWeek, addWeeks, subWeeks,
   eachDayOfInterval, startOfDay, endOfDay, startOfMonth,
@@ -114,9 +114,17 @@ function nestGroup(entries, by, then, andThen) {
 }
 
 function DonutChart({ segments, total, size = 168 }) {
+  const [hover, setHover] = useState(null)
+  const containerRef = useRef(null)
   const R = 38, circ = 2 * Math.PI * R
   const GAP = total ? Math.min(2, (circ / segments.length) * 0.4) : 0
   let cumulative = 0
+
+  function handleMove(e, seg) {
+    const rect = containerRef.current.getBoundingClientRect()
+    setHover({ label: seg.label, seconds: seg.seconds, x: e.clientX - rect.left, y: e.clientY - rect.top })
+  }
+
   if (!total) {
     return (
       <svg viewBox="0 0 100 100" style={{ width: size, height: size }}>
@@ -126,26 +134,38 @@ function DonutChart({ segments, total, size = 168 }) {
     )
   }
   return (
-    <svg viewBox="0 0 100 100" style={{ width: size, height: size }} className="-rotate-90">
-      {segments.map((seg, i) => {
-        const frac = seg.seconds / total
-        const len  = Math.max(0, frac * circ - GAP)
-        const dash = `${len} ${circ}`
-        const rot  = `rotate(${(cumulative / total) * 360} 50 50)`
-        cumulative += seg.seconds
-        const color = seg.color || CHART_COLORS[i % CHART_COLORS.length]
-        return (
-          <circle
-            key={i}
-            cx="50" cy="50" r={R}
-            fill="none" stroke={color} strokeWidth="14"
-            strokeDasharray={dash} transform={rot}
-          >
-            <title>{`${seg.label}: ${formatDuration(seg.seconds)} (${((seg.seconds / total) * 100).toFixed(1)}%)`}</title>
-          </circle>
-        )
-      })}
-    </svg>
+    <div ref={containerRef} className="relative" style={{ width: size, height: size }}>
+      <svg viewBox="0 0 100 100" style={{ width: size, height: size }} className="-rotate-90">
+        {segments.map((seg, i) => {
+          const frac = seg.seconds / total
+          const len  = Math.max(0, frac * circ - GAP)
+          const dash = `${len} ${circ}`
+          const rot  = `rotate(${(cumulative / total) * 360} 50 50)`
+          cumulative += seg.seconds
+          const color = seg.color || CHART_COLORS[i % CHART_COLORS.length]
+          return (
+            <circle
+              key={i}
+              cx="50" cy="50" r={R}
+              fill="none" stroke={color} strokeWidth="14"
+              strokeDasharray={dash} transform={rot}
+              onMouseMove={e => handleMove(e, seg)}
+              onMouseLeave={() => setHover(null)}
+              style={{ cursor: 'pointer' }}
+            />
+          )
+        })}
+      </svg>
+      {hover && (
+        <div
+          className="pointer-events-none absolute z-10 whitespace-nowrap bg-slate-800 text-white text-xs px-2.5 py-1.5 rounded-lg shadow-lg"
+          style={{ left: hover.x + 12, top: hover.y + 12 }}
+        >
+          <span className="font-semibold">{hover.label}</span>
+          {': '}{formatDuration(hover.seconds)} ({((hover.seconds / total) * 100).toFixed(1)}%)
+        </div>
+      )}
+    </div>
   )
 }
 
@@ -397,6 +417,7 @@ export default function Reports() {
             groups={userGroups}
             value={stagedUsers}
             onChange={setStagedUsers}
+            activeToggle
           />
         </FilterPill>
       )}
@@ -424,6 +445,7 @@ export default function Reports() {
           groups={projectGroups}
           value={stagedProjects}
           onChange={setStagedProjects}
+          activeToggle
         />
       </FilterPill>
       <FilterPill
@@ -488,11 +510,8 @@ export default function Reports() {
 
   const groupByRow = (
     <div className="bg-white rounded-xl border border-slate-200 p-3 mb-5 flex flex-wrap items-center gap-2">
-      <FilterPill
-        label="Group by"
-        valueLabel={primaryLabel}
-        hasValue
-      >
+      <span className="text-sm font-semibold text-slate-700 mr-0.5">Group by:</span>
+      <FilterPill bare valueLabel={primaryLabel} hasValue>
         {close => (
           <SelectableList
             options={groupByOptions}
@@ -502,9 +521,9 @@ export default function Reports() {
           />
         )}
       </FilterPill>
-      <span className="text-slate-300 text-xs">→</span>
+      <span className="text-slate-300 text-sm">→</span>
       <FilterPill
-        label="Then by"
+        bare
         valueLabel={secondaryLabel}
         hasValue={secondaryBy !== 'none'}
         onClear={secondaryBy !== 'none' ? () => { setSecondaryBy('none'); setExpanded(new Set()) } : undefined}
@@ -520,9 +539,9 @@ export default function Reports() {
       </FilterPill>
       {showTertiary && (
         <>
-          <span className="text-slate-300 text-xs">→</span>
+          <span className="text-slate-300 text-sm">→</span>
           <FilterPill
-            label="Then by"
+            bare
             valueLabel={tertiaryLabel}
             hasValue={tertiaryBy !== 'none'}
             onClear={tertiaryBy !== 'none' ? () => { setTertiaryBy('none'); setExpanded(new Set()) } : undefined}
@@ -544,11 +563,8 @@ export default function Reports() {
   // Detailed tab reuses the multi-select pill row plus a one-pill Group by.
   const detailedGroupByRow = (
     <div className="bg-white rounded-xl border border-slate-200 p-3 mb-5 flex flex-wrap items-center gap-2">
-      <FilterPill
-        label="Group by"
-        valueLabel={primaryLabel}
-        hasValue
-      >
+      <span className="text-sm font-semibold text-slate-700 mr-0.5">Group by:</span>
+      <FilterPill bare valueLabel={primaryLabel} hasValue>
         {close => (
           <SelectableList
             options={GROUP_OPTIONS.map(o => ({ value: o.key, label: o.label }))}
@@ -706,9 +722,6 @@ export default function Reports() {
                 </div>
 
                 <div className="md:col-span-2 p-5 flex flex-col items-center justify-center">
-                  <h3 className="text-sm font-semibold text-slate-700 mb-4 self-start">
-                    Breakdown
-                  </h3>
                   <DonutChart
                     segments={primaryGroups.map(g => ({
                       label: g.label,

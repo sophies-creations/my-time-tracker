@@ -7,7 +7,12 @@ import { ChevronDown, X, Check } from 'lucide-react'
 //
 // `children` may be a function receiving a `close` callback, useful when
 // the popover should dismiss after a selection.
-export default function FilterPill({ label, valueLabel = '', hasValue, onClear, children, align = 'left', width = 'w-64' }) {
+//
+// `bare`: minimal chip with no uppercase label/colon — just the current
+// value (or a muted placeholder) and a chevron/clear. Used for chained
+// controls like "Group by: X → Y → Z" where a single label precedes the
+// whole chain instead of each chip repeating it.
+export default function FilterPill({ label, valueLabel = '', hasValue, onClear, children, align = 'left', width = 'w-64', bare = false }) {
   const [open, setOpen] = useState(false)
   const ref = useRef(null)
 
@@ -26,30 +31,58 @@ export default function FilterPill({ label, valueLabel = '', hasValue, onClear, 
       <button
         type="button"
         onClick={() => setOpen(v => !v)}
-        className={`flex items-center gap-1.5 px-3 h-9 rounded-full border text-xs transition-colors ${
-          hasValue
-            ? 'border-orchid-300 bg-orchid-50 text-orchid-800'
-            : 'border-slate-200 bg-white text-slate-600 hover:border-slate-300 hover:text-slate-800'
-        }`}
+        className={bare
+          ? 'flex items-center gap-1.5 px-2.5 h-8 rounded-lg border border-slate-200 bg-white text-sm text-slate-700 hover:border-slate-300 hover:bg-slate-50 transition-colors'
+          : `flex items-center gap-1.5 px-3 h-9 rounded-full border text-xs transition-colors ${
+              hasValue
+                ? 'border-orchid-300 bg-orchid-50 text-orchid-800'
+                : 'border-slate-200 bg-white text-slate-600 hover:border-slate-300 hover:text-slate-800'
+            }`
+        }
       >
-        <span className="font-semibold uppercase tracking-wide text-[10px]">{label}</span>
-        {hasValue ? (
+        {bare ? (
+          hasValue ? (
+            <>
+              <span>{valueLabel}</span>
+              {onClear && (
+                <span
+                  role="button"
+                  aria-label="Clear"
+                  onClick={e => { e.stopPropagation(); onClear() }}
+                  className="text-slate-400 hover:text-slate-700 ml-0.5 cursor-pointer"
+                >
+                  <X size={11} />
+                </span>
+              )}
+            </>
+          ) : (
+            <>
+              <span className="text-slate-400">{valueLabel || 'Add level'}</span>
+              <ChevronDown size={12} className="text-slate-400" />
+            </>
+          )
+        ) : (
           <>
-            <span className="text-slate-300">:</span>
-            <span className="text-xs max-w-[10rem] truncate">{valueLabel}</span>
-            {onClear && (
-              <span
-                role="button"
-                aria-label="Clear filter"
-                onClick={e => { e.stopPropagation(); onClear() }}
-                className="text-slate-400 hover:text-slate-700 ml-0.5 cursor-pointer"
-              >
-                <X size={11} />
-              </span>
+            <span className="font-semibold uppercase tracking-wide text-[10px]">{label}</span>
+            {hasValue ? (
+              <>
+                <span className="text-slate-300">:</span>
+                <span className="text-xs max-w-[10rem] truncate">{valueLabel}</span>
+                {onClear && (
+                  <span
+                    role="button"
+                    aria-label="Clear filter"
+                    onClick={e => { e.stopPropagation(); onClear() }}
+                    className="text-slate-400 hover:text-slate-700 ml-0.5 cursor-pointer"
+                  >
+                    <X size={11} />
+                  </span>
+                )}
+              </>
+            ) : (
+              <ChevronDown size={11} className="text-slate-400" />
             )}
           </>
-        ) : (
-          <ChevronDown size={11} className="text-slate-400" />
         )}
       </button>
       {open && (
@@ -65,17 +98,33 @@ export default function FilterPill({ label, valueLabel = '', hasValue, onClear, 
 // provided, options are rendered under group headers (used for Active /
 // Inactive splitting). Pass `multi` for checkbox-style selection where
 // `value` is an array and `onChange` receives the next array.
-export function SelectableList({ options, groups, value, onChange, multi = false, search = true }) {
+//
+// `activeToggle`: when true, `groups` is expected to contain an "Active"
+// group and optionally an "Inactive" group. The list opens scoped to
+// Active only, with a small Active/Inactive/All switch pinned under the
+// search bar to widen the view.
+export function SelectableList({ options, groups, value, onChange, multi = false, search = true, activeToggle = false }) {
   const [q, setQ] = useState('')
+  const [view, setView] = useState('active')
   const lc = q.trim().toLowerCase()
 
   const allOptions = groups ? groups.flatMap(g => g.options) : (options ?? [])
   const matchFn = o => !lc || o.label.toLowerCase().includes(lc)
-  const shouldShowSearch = search && allOptions.length > 8
+  const shouldShowSearch = search && (activeToggle || allOptions.length > 8)
 
-  const renderedGroups = groups
-    ? groups.map(g => ({ label: g.label, options: g.options.filter(matchFn) })).filter(g => g.options.length)
-    : [{ label: null, options: allOptions.filter(matchFn) }]
+  const activeOptions   = groups?.find(g => g.label === 'Active')?.options ?? []
+  const inactiveOptions = groups?.find(g => g.label === 'Inactive')?.options ?? []
+
+  let renderedGroups
+  if (activeToggle) {
+    if (view === 'inactive')    renderedGroups = [{ label: null, options: inactiveOptions.filter(matchFn) }]
+    else if (view === 'all')    renderedGroups = (groups ?? []).map(g => ({ label: g.label, options: g.options.filter(matchFn) })).filter(g => g.options.length)
+    else                        renderedGroups = [{ label: null, options: activeOptions.filter(matchFn) }]
+  } else {
+    renderedGroups = groups
+      ? groups.map(g => ({ label: g.label, options: g.options.filter(matchFn) })).filter(g => g.options.length)
+      : [{ label: null, options: allOptions.filter(matchFn) }]
+  }
 
   const hasMatches = renderedGroups.some(g => g.options.length > 0)
 
@@ -102,6 +151,24 @@ export function SelectableList({ options, groups, value, onChange, multi = false
             placeholder="Search…"
             className="w-full text-sm px-2 py-1 rounded border border-slate-200 outline-none focus:border-orchid-400"
           />
+        </div>
+      )}
+      {activeToggle && (
+        <div className="flex items-center gap-1 px-2 py-1.5 border-b border-slate-100">
+          {[
+            { key: 'active',   label: 'Active' },
+            { key: 'inactive', label: 'Inactive', hidden: inactiveOptions.length === 0 },
+            { key: 'all',      label: 'All' },
+          ].filter(o => !o.hidden).map(o => (
+            <button
+              key={o.key}
+              type="button"
+              onClick={() => setView(o.key)}
+              className={`px-2 py-0.5 rounded-full text-[11px] font-medium transition-colors ${
+                view === o.key ? 'bg-orchid-100 text-orchid-700' : 'text-slate-400 hover:text-slate-600 hover:bg-slate-50'
+              }`}
+            >{o.label}</button>
+          ))}
         </div>
       )}
       <div className="max-h-64 overflow-y-auto py-1">

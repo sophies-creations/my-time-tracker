@@ -35,10 +35,6 @@ export default function Tracker() {
     return () => window.removeEventListener('timeentry:saved', handler)
   }, [fetchEntries])
 
-  function handleEdit(entry) {
-    window.dispatchEvent(new CustomEvent('manual-entry:open', { detail: { entry } }))
-  }
-
   return (
     <div>
       <div className="flex items-center justify-between mb-6">
@@ -50,7 +46,7 @@ export default function Tracker() {
           <div className="w-6 h-6 border-2 border-orchid-600 border-t-transparent rounded-full animate-spin" />
         </div>
       ) : (
-        <TimeEntryList entries={entries} onEdit={handleEdit} onRefresh={fetchEntries} />
+        <TimeEntryList entries={entries} onRefresh={fetchEntries} />
       )}
     </div>
   )

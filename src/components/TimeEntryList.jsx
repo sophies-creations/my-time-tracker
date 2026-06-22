@@ -1,11 +1,57 @@
-import { Fragment, useMemo, useState } from 'react'
-import { Pencil, Trash2, Clock, Play, ChevronDown } from 'lucide-react'
+import { Fragment, useMemo, useState, useRef, useEffect } from 'react'
+import { Trash2, Clock, Play, ChevronDown, MoreVertical, Maximize2, Minimize2 } from 'lucide-react'
 import { supabase } from '../lib/supabase'
 import { useAuth } from '../contexts/AuthContext'
 import { formatDuration, formatTime, groupByDate, formatDateHeader } from '../utils/formatters'
 import InlineDurationEdit from './InlineDurationEdit'
 import InlineDescriptionEdit from './InlineDescriptionEdit'
 import toast from 'react-hot-toast'
+
+// Fixed-width ⋮ menu used by both EntryRow and StackRow so the action
+// column never shifts based on role or stack state. Renders an inert,
+// same-size placeholder when there are no items to show.
+function RowMenu({ items }) {
+  const [open, setOpen] = useState(false)
+  const ref = useRef(null)
+
+  useEffect(() => {
+    function onDown(e) { if (ref.current && !ref.current.contains(e.target)) setOpen(false) }
+    document.addEventListener('mousedown', onDown)
+    return () => document.removeEventListener('mousedown', onDown)
+  }, [])
+
+  if (!items.length) {
+    return <span className="w-7 h-7 inline-flex items-center justify-center flex-shrink-0" />
+  }
+
+  return (
+    <div className="relative flex-shrink-0" ref={ref}>
+      <button
+        onClick={e => { e.stopPropagation(); setOpen(v => !v) }}
+        title="More actions"
+        className="p-1.5 w-7 h-7 inline-flex items-center justify-center text-slate-400 hover:text-slate-700 hover:bg-slate-100 rounded transition-colors"
+      >
+        <MoreVertical size={15} />
+      </button>
+      {open && (
+        <div className="absolute right-0 top-full mt-1 z-20 bg-white border border-slate-200 rounded-lg shadow-lg py-1 w-44">
+          {items.map((it, i) => (
+            <button
+              key={i}
+              onClick={e => { e.stopPropagation(); setOpen(false); it.onClick() }}
+              className={`w-full flex items-center gap-2 px-3 py-1.5 text-sm text-left transition-colors ${
+                it.danger ? 'text-red-600 hover:bg-red-50' : 'text-slate-700 hover:bg-slate-50'
+              }`}
+            >
+              {it.icon}
+              {it.label}
+            </button>
+          ))}
+        </div>
+      )}
+    </div>
+  )
+}
 
 function stackKey(entry) {
   const pid  = entry.project?.id ?? entry.project_id ?? '_none'
@@ -32,8 +78,11 @@ function stackDay(dayEntries) {
   return out
 }
 
-function EntryRow({ entry, isManager, onEdit, onResume, onDelete, onRefresh, indented }) {
+function EntryRow({ entry, isManager, onResume, onDelete, onRefresh, indented }) {
   const canEdit = isManager
+  const menuItems = canEdit
+    ? [{ label: 'Delete', icon: <Trash2 size={13} />, onClick: () => onDelete(entry.id), danger: true }]
+    : []
   return (
     <div className={`flex items-center gap-3 px-4 py-3 group ${indented ? 'pl-10 bg-slate-50/40' : ''}`}>
       <div className="flex-1 min-w-0 flex items-center gap-2 text-sm">
@@ -55,7 +104,7 @@ function EntryRow({ entry, isManager, onEdit, onResume, onDelete, onRefresh, ind
       <span className="text-xs text-slate-400 hidden sm:block flex-shrink-0 font-mono tabular-nums">
         {formatTime(entry.start_time)}–{entry.end_time ? formatTime(entry.end_time) : '...'}
       </span>
-      <div className="w-20 text-right flex-shrink-0">
+      <div className="w-24 text-right flex-shrink-0">
         <InlineDurationEdit
           entry={entry}
           canEdit={canEdit}
@@ -63,32 +112,15 @@ function EntryRow({ entry, isManager, onEdit, onResume, onDelete, onRefresh, ind
           className="text-sm text-slate-700"
         />
       </div>
-      <div className="flex items-center gap-0.5">
+      <div className="flex items-center gap-0.5 flex-shrink-0">
         <button
           onClick={() => onResume(entry)}
           title="Resume this entry"
-          className="p-1.5 text-slate-400 hover:text-emerald-600 hover:bg-emerald-50 rounded transition-colors"
+          className="p-1.5 w-7 h-7 inline-flex items-center justify-center text-slate-400 hover:text-emerald-600 hover:bg-emerald-50 rounded transition-colors flex-shrink-0"
         >
           <Play size={13} fill="currentColor" />
         </button>
-        {canEdit && (
-          <div className="flex items-center gap-0.5 opacity-0 group-hover:opacity-100 transition-opacity">
-            <button
-              onClick={() => onEdit(entry)}
-              title="Edit"
-              className="p-1.5 text-slate-400 hover:text-orchid-600 hover:bg-orchid-50 rounded transition-colors"
-            >
-              <Pencil size={13} />
-            </button>
-            <button
-              onClick={() => onDelete(entry.id)}
-              title="Delete"
-              className="p-1.5 text-slate-400 hover:text-red-600 hover:bg-red-50 rounded transition-colors"
-            >
-              <Trash2 size={13} />
-            </button>
-          </div>
-        )}
+        <RowMenu items={menuItems} />
       </div>
     </div>
   )
@@ -99,12 +131,24 @@ function StackRow({ group, isOpen, onToggle, onResume }) {
   // Show the range as latest end → earliest start so it spans the stack
   const earliest = group.entries[group.entries.length - 1]
   const latest   = group.entries[0]
+  const menuItems = [{
+    label: isOpen ? 'Collapse entries' : 'Expand entries',
+    icon: isOpen ? <Minimize2 size={13} /> : <Maximize2 size={13} />,
+    onClick: onToggle,
+  }]
   return (
-    <button
+    <div
       onClick={onToggle}
-      className="w-full flex items-center gap-3 px-4 py-3 text-left hover:bg-slate-50 transition-colors"
+      role="button"
+      tabIndex={0}
+      onKeyDown={e => { if (e.key === 'Enter' || e.key === ' ') { e.preventDefault(); onToggle() } }}
+      className="w-full flex items-center gap-3 px-4 py-3 text-left hover:bg-slate-50 transition-colors cursor-pointer"
     >
       <div className="flex-1 min-w-0 flex items-center gap-2 text-sm">
+        <ChevronDown
+          size={14}
+          className={`text-slate-400 flex-shrink-0 transition-transform ${isOpen ? '' : '-rotate-90'}`}
+        />
         <span
           className="w-2 h-2 rounded-full flex-shrink-0"
           style={{ backgroundColor: sample.project?.color ?? '#cbd5e1' }}
@@ -123,30 +167,24 @@ function StackRow({ group, isOpen, onToggle, onResume }) {
       <span className="text-xs text-slate-400 hidden sm:block flex-shrink-0 font-mono tabular-nums">
         {formatTime(earliest.start_time)}–{latest.end_time ? formatTime(latest.end_time) : '...'}
       </span>
-      <span className="font-mono text-sm font-semibold text-slate-800 w-20 text-right flex-shrink-0 tabular-nums">
+      <span className="font-mono text-sm font-semibold text-slate-800 w-24 text-right flex-shrink-0 tabular-nums">
         {formatDuration(group.total)}
       </span>
-      <div className="flex items-center gap-0.5">
-        <span
+      <div className="flex items-center gap-0.5 flex-shrink-0">
+        <button
           onClick={e => { e.stopPropagation(); onResume(sample) }}
           title="Resume this entry"
-          role="button"
-          className="p-1.5 text-slate-400 hover:text-emerald-600 hover:bg-emerald-50 rounded transition-colors cursor-pointer"
+          className="p-1.5 w-7 h-7 inline-flex items-center justify-center text-slate-400 hover:text-emerald-600 hover:bg-emerald-50 rounded transition-colors flex-shrink-0"
         >
           <Play size={13} fill="currentColor" />
-        </span>
-        <span className="p-1.5 text-slate-400">
-          <ChevronDown
-            size={14}
-            className={`transition-transform ${isOpen ? '' : '-rotate-90'}`}
-          />
-        </span>
+        </button>
+        <RowMenu items={menuItems} />
       </div>
-    </button>
+    </div>
   )
 }
 
-export default function TimeEntryList({ entries, onEdit, onRefresh }) {
+export default function TimeEntryList({ entries, onRefresh }) {
   const { isManager } = useAuth()
   const [expanded, setExpanded] = useState(() => new Set())
   const grouped = useMemo(() => groupByDate(entries), [entries])
@@ -233,7 +271,6 @@ export default function TimeEntryList({ entries, onEdit, onRefresh }) {
                         key={e.id}
                         entry={e}
                         isManager={isManager}
-                        onEdit={onEdit}
                         onResume={handleResume}
                         onDelete={handleDelete}
                         onRefresh={onRefresh}
@@ -255,7 +292,6 @@ export default function TimeEntryList({ entries, onEdit, onRefresh }) {
                           key={e.id}
                           entry={e}
                           isManager={isManager}
-                          onEdit={onEdit}
                           onResume={handleResume}
                           onDelete={handleDelete}
                           onRefresh={onRefresh}
