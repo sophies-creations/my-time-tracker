@@ -1,4 +1,5 @@
-import { Fragment, useMemo, useState, useRef, useEffect } from 'react'
+import { Fragment, useMemo, useState, useRef, useEffect, useLayoutEffect } from 'react'
+import { createPortal } from 'react-dom'
 import { Trash2, Clock, Play, ChevronDown, MoreVertical, Maximize2, Minimize2 } from 'lucide-react'
 import { supabase } from '../lib/supabase'
 import { useAuth } from '../contexts/AuthContext'
@@ -10,31 +11,87 @@ import toast from 'react-hot-toast'
 // Fixed-width ⋮ menu used by both EntryRow and StackRow so the action
 // column never shifts based on role or stack state. Renders an inert,
 // same-size placeholder when there are no items to show.
+//
+// The popover itself is portaled to document.body and positioned with
+// `fixed`, anchored to the button's real getBoundingClientRect(). Day-group
+// cards use overflow:hidden to clip their rounded corners, which was
+// trapping/cutting off the popover (worst on the last row of a list,
+// where there's no room below). Portaling sidesteps that entirely, and we
+// flip the menu above the button when there isn't room below.
 function RowMenu({ items }) {
   const [open, setOpen] = useState(false)
-  const ref = useRef(null)
+  const [anchorRect, setAnchorRect] = useState(null)
+  const [pos, setPos] = useState(null)
+  const btnRef  = useRef(null)
+  const menuRef = useRef(null)
+
+  function openMenu(e) {
+    e.stopPropagation()
+    setAnchorRect(btnRef.current.getBoundingClientRect())
+    setPos(null)
+    setOpen(true)
+  }
 
   useEffect(() => {
-    function onDown(e) { if (ref.current && !ref.current.contains(e.target)) setOpen(false) }
+    if (!open) return
+    function onDown(e) {
+      if (btnRef.current?.contains(e.target) || menuRef.current?.contains(e.target)) return
+      setOpen(false)
+    }
+    function reposition() {
+      if (btnRef.current) setAnchorRect(btnRef.current.getBoundingClientRect())
+    }
     document.addEventListener('mousedown', onDown)
-    return () => document.removeEventListener('mousedown', onDown)
-  }, [])
+    window.addEventListener('scroll', reposition, true)
+    window.addEventListener('resize', reposition)
+    return () => {
+      document.removeEventListener('mousedown', onDown)
+      window.removeEventListener('scroll', reposition, true)
+      window.removeEventListener('resize', reposition)
+    }
+  }, [open])
+
+  useLayoutEffect(() => {
+    if (!open || !anchorRect) return
+    const el = menuRef.current
+    if (!el) return
+    const MARGIN = 6
+    const rect = el.getBoundingClientRect()
+
+    let left = anchorRect.right - rect.width
+    left = Math.max(MARGIN, Math.min(left, window.innerWidth - rect.width - MARGIN))
+
+    let top = anchorRect.bottom + 4
+    if (top + rect.height > window.innerHeight - MARGIN) {
+      top = anchorRect.top - rect.height - 4
+    }
+    setPos({ left, top })
+  }, [open, anchorRect])
 
   if (!items.length) {
     return <span className="w-7 h-7 inline-flex items-center justify-center flex-shrink-0" />
   }
 
   return (
-    <div className="relative flex-shrink-0" ref={ref}>
+    <div className="relative flex-shrink-0">
       <button
-        onClick={e => { e.stopPropagation(); setOpen(v => !v) }}
+        ref={btnRef}
+        onClick={openMenu}
         title="More actions"
         className="p-1.5 w-7 h-7 inline-flex items-center justify-center text-slate-400 hover:text-slate-700 hover:bg-slate-100 rounded transition-colors"
       >
         <MoreVertical size={15} />
       </button>
-      {open && (
-        <div className="absolute right-0 top-full mt-1 z-20 bg-white border border-slate-200 rounded-lg shadow-lg py-1 w-44">
+      {open && anchorRect && createPortal(
+        <div
+          ref={menuRef}
+          className="fixed z-[9999] bg-white border border-slate-200 rounded-lg shadow-lg py-1 w-44"
+          style={{
+            left: pos ? pos.left : anchorRect.right,
+            top: pos ? pos.top : anchorRect.bottom,
+            visibility: pos ? 'visible' : 'hidden',
+          }}
+        >
           {items.map((it, i) => (
             <button
               key={i}
@@ -47,7 +104,8 @@ function RowMenu({ items }) {
               {it.label}
             </button>
           ))}
-        </div>
+        </div>,
+        document.body
       )}
     </div>
   )
