@@ -1,4 +1,5 @@
-import { useState } from 'react'
+import { useState, useRef, useEffect, useLayoutEffect } from 'react'
+import { createPortal } from 'react-dom'
 import {
   format,
   eachDayOfInterval, eachWeekOfInterval, eachMonthOfInterval,
@@ -78,8 +79,28 @@ export function buildBuckets(entries, range, fallbackColor = '#DA70D6') {
 
 export default function StackedDayBars({ buckets, labels = 'auto' }) {
   const [hover, setHover] = useState(null)
+  const [anchorRect, setAnchorRect] = useState(null)
+  const barRefs = useRef([])
   const showLabels = labels === 'auto' ? buckets.length <= 14 : !!labels
   const max = Math.max(...buckets.map(b => b.total), 1)
+
+  function updateAnchor(i) {
+    const el = barRefs.current[i]
+    if (el) setAnchorRect(el.getBoundingClientRect())
+  }
+
+  // Keep the anchor in sync with the page while a tooltip is showing —
+  // the chart card can sit inside a scrollable page area.
+  useEffect(() => {
+    if (hover === null) return
+    const reposition = () => updateAnchor(hover)
+    window.addEventListener('scroll', reposition, true)
+    window.addEventListener('resize', reposition)
+    return () => {
+      window.removeEventListener('scroll', reposition, true)
+      window.removeEventListener('resize', reposition)
+    }
+  }, [hover])
 
   if (!buckets.length) {
     return <p className="text-sm text-slate-400 py-10 text-center">No data for this period</p>
@@ -94,8 +115,9 @@ export default function StackedDayBars({ buckets, labels = 'auto' }) {
           return (
             <div
               key={i}
+              ref={el => (barRefs.current[i] = el)}
               className="flex-1 flex flex-col items-center min-w-0 cursor-default"
-              onMouseEnter={() => setHover(i)}
+              onMouseEnter={() => { setHover(i); updateAnchor(i) }}
               onMouseLeave={() => setHover(h => (h === i ? null : h))}
             >
               <div className="relative w-full flex flex-col justify-end" style={{ height: '11rem' }}>
@@ -129,30 +151,54 @@ export default function StackedDayBars({ buckets, labels = 'auto' }) {
         })}
       </div>
 
-      {hover !== null && buckets[hover] && (
-        <Tooltip bucket={buckets[hover]} index={hover} count={buckets.length} />
+      {hover !== null && buckets[hover] && anchorRect && (
+        <Tooltip key={hover} bucket={buckets[hover]} anchorRect={anchorRect} />
       )}
     </div>
   )
 }
 
-function Tooltip({ bucket, index, count }) {
-  const centerPct = ((index + 0.5) / count) * 100
-  let translateX = '-50%'
-  if (centerPct < 18) translateX = '-10%'
-  else if (centerPct > 82) translateX = '-90%'
+// Portaled to document.body and positioned with `fixed` + real measured
+// geometry, so no ancestor's overflow:hidden/auto or stacking context
+// (transform, z-index, etc.) can clip it or paint over it. We render once
+// invisible to measure the tooltip's real size, then reposition — both
+// passes happen inside the same layout-effect flush, so there's no
+// visible flicker.
+function Tooltip({ bucket, anchorRect }) {
+  const elRef = useRef(null)
+  const [pos, setPos] = useState(null)
+
+  useLayoutEffect(() => {
+    const el = elRef.current
+    if (!el) return
+    const MARGIN = 8
+    const rect = el.getBoundingClientRect()
+
+    let left = anchorRect.left + anchorRect.width / 2 - rect.width / 2
+    left = Math.max(MARGIN, Math.min(left, window.innerWidth - rect.width - MARGIN))
+
+    let top = anchorRect.top - rect.height - MARGIN
+    if (top < MARGIN) {
+      // Not enough room above (long project list, bar near top of
+      // viewport) — flip below the bar instead.
+      top = Math.min(anchorRect.bottom + MARGIN, window.innerHeight - rect.height - MARGIN)
+    }
+
+    setPos({ left, top })
+  }, [anchorRect, bucket])
 
   const sorted = bucket.total
     ? [...bucket.segments].sort((a, b) => b.seconds - a.seconds)
     : []
 
-  return (
+  return createPortal(
     <div
-      className="absolute pointer-events-none z-50 bg-slate-900 text-white rounded-lg shadow-xl px-3 py-2 w-[16rem]"
+      ref={elRef}
+      className="fixed pointer-events-none z-[9999] bg-slate-900 text-white rounded-lg shadow-xl px-3 py-2 w-[16rem]"
       style={{
-        left: `${centerPct}%`,
-        top: '-8px',
-        transform: `translate(${translateX}, -100%)`,
+        left: pos ? pos.left : anchorRect.left,
+        top: pos ? pos.top : anchorRect.top,
+        visibility: pos ? 'visible' : 'hidden',
       }}
     >
       <div className="flex items-center justify-between gap-3 pb-1.5 mb-1.5 border-b border-white/10">
@@ -175,6 +221,7 @@ function Tooltip({ bucket, index, count }) {
           ))}
         </div>
       )}
-    </div>
+    </div>,
+    document.body
   )
 }
