@@ -10,26 +10,39 @@ export default function InviteModal({ onClose, onSaved, clientId = null, prefill
   const [role, setRole]       = useState(clientId ? 'client' : 'member')
   const [saving, setSaving]   = useState(false)
   const [inviteLink, setInviteLink] = useState(null)
+  const [emailSent, setEmailSent]   = useState(false)
   const [copied, setCopied]   = useState(false)
 
   async function handleCreate() {
     if (!email.trim()) { toast.error('Email is required'); return }
     setSaving(true)
     try {
-      const payload = {
-        email: email.trim().toLowerCase(),
-        role,
-        invited_by: user.id,
-        ...(clientId ? { client_id: clientId } : {}),
+      if (clientId) {
+        // Client portal invites still use the shareable token-link flow.
+        const payload = {
+          email: email.trim().toLowerCase(),
+          role,
+          invited_by: user.id,
+          client_id: clientId,
+        }
+        const { data, error } = await supabase.from('invites').insert(payload).select().single()
+        if (error) throw error
+        const link = `${window.location.origin}/accept-invite?token=${data.token}`
+        setInviteLink(link)
+        handleCopy(link)
+      } else {
+        // Team members get a real email invite via the Edge Function.
+        const { data, error } = await supabase.functions.invoke('invite-team-member', {
+          body: { email: email.trim().toLowerCase(), role, redirectTo: window.location.origin },
+        })
+        if (error) throw error
+        if (data?.error) throw new Error(data.error)
+        setEmailSent(true)
+        toast.success(`Invitation email sent to ${email.trim()}`)
       }
-      const { data, error } = await supabase.from('invites').insert(payload).select().single()
-      if (error) throw error
-      const link = `${window.location.origin}/accept-invite?token=${data.token}`
-      setInviteLink(link)
-      handleCopy(link)
     } catch (err) {
       console.error('[InviteModal] create error:', err)
-      toast.error('Failed to create invite')
+      toast.error(err.message || 'Failed to create invite')
     } finally {
       setSaving(false)
     }
@@ -59,7 +72,7 @@ export default function InviteModal({ onClose, onSaved, clientId = null, prefill
         </div>
 
         <div className="px-6 py-5 space-y-4">
-          {!inviteLink ? (
+          {!inviteLink && !emailSent ? (
             <>
               <div>
                 <label className="block text-xs font-medium text-slate-600 mb-1.5">Email address</label>
@@ -84,10 +97,12 @@ export default function InviteModal({ onClose, onSaved, clientId = null, prefill
                 </div>
               )}
               <p className="text-xs text-slate-400">
-                An invite link will be generated — share it with the invitee. It expires in 7 days.
+                {clientId
+                  ? 'An invite link will be generated — share it with the invitee. It expires in 7 days.'
+                  : 'They’ll receive an email with a link to set their password and join.'}
               </p>
             </>
-          ) : (
+          ) : inviteLink ? (
             <div className="space-y-3">
               <p className="text-sm text-slate-700 font-medium">Invite link created!</p>
               <div className="bg-slate-50 rounded-lg p-3 flex items-start gap-2">
@@ -98,11 +113,15 @@ export default function InviteModal({ onClose, onSaved, clientId = null, prefill
               </div>
               <p className="text-xs text-slate-400">Share this link with {email}.</p>
             </div>
+          ) : (
+            <p className="text-sm text-slate-700 font-medium">
+              Invitation email sent to {email.trim()}.
+            </p>
           )}
         </div>
 
         <div className="flex justify-end gap-2 px-6 py-4 border-t border-slate-100">
-          {inviteLink ? (
+          {inviteLink || emailSent ? (
             <button onClick={onSaved} className="px-4 py-2 text-sm bg-orchid-600 hover:bg-orchid-700 text-white rounded-lg font-medium">
               Done
             </button>

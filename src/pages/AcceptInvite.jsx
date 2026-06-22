@@ -9,30 +9,57 @@ export default function AcceptInvite() {
   const navigate = useNavigate()
   const token = searchParams.get('token')
 
-  const [invite, setInvite]     = useState(null)
-  const [notFound, setNotFound] = useState(false)
-  const [fullName, setFullName] = useState('')
-  const [password, setPassword] = useState('')
-  const [loading, setLoading]   = useState(false)
+  // Two flows land on this page:
+  //  - token in the URL: legacy shareable-link invite (client portal) — the
+  //    invite row holds the email/role and the user signs up fresh.
+  //  - no token: an admin email invite (auth.admin.inviteUserByEmail). The
+  //    auth user already exists; Supabase's redirect put session tokens in
+  //    the URL hash, which supabase-js auto-consumes, so we just need a
+  //    name + password to finish the account.
+  const [invite, setInvite]         = useState(null)
+  const [sessionUser, setSessionUser] = useState(null)
+  const [notFound, setNotFound]     = useState(false)
+  const [fullName, setFullName]     = useState('')
+  const [password, setPassword]     = useState('')
+  const [loading, setLoading]       = useState(false)
 
   useEffect(() => {
-    if (!token) { setNotFound(true); return }
-    supabase
-      .from('invites')
-      .select('*')
-      .eq('token', token)
-      .is('accepted_at', null)
-      .gt('expires_at', new Date().toISOString())
-      .maybeSingle()
-      .then(({ data }) => {
-        if (!data) { setNotFound(true); return }
-        setInvite(data)
-      })
+    if (token) {
+      supabase
+        .from('invites')
+        .select('*')
+        .eq('token', token)
+        .is('accepted_at', null)
+        .gt('expires_at', new Date().toISOString())
+        .maybeSingle()
+        .then(({ data }) => {
+          if (!data) { setNotFound(true); return }
+          setInvite(data)
+        })
+      return
+    }
+
+    supabase.auth.getSession().then(({ data: { session } }) => {
+      if (!session) { setNotFound(true); return }
+      setSessionUser(session.user)
+    })
   }, [token])
 
   async function handleSubmit(e) {
     e.preventDefault()
     setLoading(true)
+
+    if (sessionUser) {
+      const { error } = await supabase.auth.updateUser({
+        password,
+        data: { full_name: fullName },
+      })
+      if (error) { toast.error(error.message); setLoading(false); return }
+      toast.success('Welcome aboard!')
+      navigate('/')
+      return
+    }
+
     const { error } = await supabase.auth.signUp({
       email: invite.email,
       password,
@@ -57,13 +84,16 @@ export default function AcceptInvite() {
     )
   }
 
-  if (!invite) {
+  if (!invite && !sessionUser) {
     return (
       <div className="min-h-screen bg-slate-50 flex items-center justify-center">
         <div className="w-6 h-6 border-2 border-orchid-600 border-t-transparent rounded-full animate-spin" />
       </div>
     )
   }
+
+  const email = sessionUser ? sessionUser.email : invite.email
+  const role  = sessionUser ? sessionUser.user_metadata?.role : invite.role
 
   return (
     <div className="min-h-screen bg-slate-50 flex items-center justify-center p-4">
@@ -78,7 +108,7 @@ export default function AcceptInvite() {
         <h2 className="text-lg font-semibold text-slate-800 mb-1">You've been invited!</h2>
         <p className="text-sm text-slate-500 mb-6">
           Join as{' '}
-          <span className="font-semibold capitalize text-orchid-600">{invite.role}</span>
+          <span className="font-semibold capitalize text-orchid-600">{role}</span>
         </p>
 
         <form onSubmit={handleSubmit} className="space-y-4">
@@ -92,7 +122,7 @@ export default function AcceptInvite() {
           <div>
             <label className="block text-xs font-medium text-slate-600 mb-1.5">Email</label>
             <input
-              type="email" value={invite.email} readOnly
+              type="email" value={email} readOnly
               className="w-full border border-slate-100 rounded-lg px-3 py-2.5 text-sm bg-slate-50 text-slate-500"
             />
           </div>
