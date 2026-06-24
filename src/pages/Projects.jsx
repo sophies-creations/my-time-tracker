@@ -20,12 +20,6 @@ const ACCESS_OPTIONS = [
   { value: 'private', label: 'Private' },
 ]
 
-const BILLABLE_OPTIONS = [
-  { value: 'all',         label: 'All' },
-  { value: 'billable',    label: 'Billable' },
-  { value: 'nonbillable', label: 'Non-billable' },
-]
-
 const NO_CLIENT = '_none'
 
 export default function Projects() {
@@ -41,16 +35,14 @@ export default function Projects() {
   const [search, setSearch] = useState('')
 
   // Staged filter values (shown in pills but not yet applied).
-  const [stagedStatus,   setStagedStatus]   = useState('active')
-  const [stagedClients,  setStagedClients]  = useState([])
-  const [stagedAccess,   setStagedAccess]   = useState('all')
-  const [stagedBillable, setStagedBillable] = useState('all')
+  const [stagedStatus,  setStagedStatus]  = useState('active')
+  const [stagedClients, setStagedClients] = useState([])
+  const [stagedAccess,  setStagedAccess]  = useState('all')
 
   // Applied filter values (drive the visible list).
-  const [filterStatus,   setFilterStatus]   = useState('active')
-  const [filterClients,  setFilterClients]  = useState([])
-  const [filterAccess,   setFilterAccess]   = useState('all')
-  const [filterBillable, setFilterBillable] = useState('all')
+  const [filterStatus,  setFilterStatus]  = useState('active')
+  const [filterClients, setFilterClients] = useState([])
+  const [filterAccess,  setFilterAccess]  = useState('all')
 
   useEffect(() => {
     fetchProjects()
@@ -94,38 +86,30 @@ export default function Projects() {
     fetchProjects()
   }
 
-  // Detect whether the billable column was added via migration — show that
-  // filter only when the field is actually present in the fetched data.
-  const hasBillableField = useMemo(() => projects.some(p => 'billable' in p), [projects])
-
   const arraysEqual = (a, b) => a.length === b.length && a.every(v => b.includes(v))
 
   const filtersDirty =
-    stagedStatus   !== filterStatus  ||
+    stagedStatus !== filterStatus ||
     !arraysEqual(stagedClients, filterClients) ||
-    stagedAccess   !== filterAccess  ||
-    stagedBillable !== filterBillable
+    stagedAccess !== filterAccess
 
   const anyFilterActive =
-    !!search.trim()                            ||
-    filterStatus  !== 'active'                 ||
-    filterClients.length > 0                   ||
-    filterAccess  !== 'all'                    ||
-    (hasBillableField && filterBillable !== 'all')
+    !!search.trim()         ||
+    filterStatus  !== 'active' ||
+    filterClients.length > 0   ||
+    filterAccess  !== 'all'
 
   function applyFilters() {
     setFilterStatus(stagedStatus)
     setFilterClients(stagedClients)
     setFilterAccess(stagedAccess)
-    setFilterBillable(stagedBillable)
   }
 
   function clearFilters() {
     setSearch('')
-    setStagedStatus('active');   setFilterStatus('active')
-    setStagedClients([]);        setFilterClients([])
-    setStagedAccess('all');      setFilterAccess('all')
-    setStagedBillable('all');    setFilterBillable('all')
+    setStagedStatus('active');  setFilterStatus('active')
+    setStagedClients([]);       setFilterClients([])
+    setStagedAccess('all');     setFilterAccess('all')
   }
 
   const clientOptions = useMemo(() => [
@@ -154,13 +138,8 @@ export default function Projects() {
     if (filterAccess === 'public')  list = list.filter(p => (p.visibility ?? 'public') === 'public')
     if (filterAccess === 'private') list = list.filter(p => (p.visibility ?? 'public') === 'private')
 
-    if (hasBillableField) {
-      if (filterBillable === 'billable')    list = list.filter(p => p.billable === true)
-      if (filterBillable === 'nonbillable') list = list.filter(p => p.billable === false)
-    }
-
     return list
-  }, [projects, search, filterStatus, filterClients, filterAccess, filterBillable, hasBillableField])
+  }, [projects, search, filterStatus, filterClients, filterAccess])
 
   // Favourites float to the top; both groups are sorted A→Z within themselves.
   const sorted = useMemo(() => {
@@ -172,9 +151,8 @@ export default function Projects() {
 
   const canCreate = isAdmin || isManager
 
-  const statusLabel   = STATUS_OPTIONS.find(o => o.value === stagedStatus)?.label ?? ''
-  const accessLabel   = ACCESS_OPTIONS.find(o => o.value === stagedAccess)?.label ?? ''
-  const billableLabel = BILLABLE_OPTIONS.find(o => o.value === stagedBillable)?.label ?? ''
+  const statusLabel = STATUS_OPTIONS.find(o => o.value === stagedStatus)?.label ?? ''
+  const accessLabel = ACCESS_OPTIONS.find(o => o.value === stagedAccess)?.label ?? ''
 
   function Row({ project }) {
     const isFav = favoriteIds.has(project.id)
@@ -215,15 +193,6 @@ export default function Projects() {
             </span>
           )}
         </td>
-        {hasBillableField && (
-          <td className="px-4 py-3.5">
-            {project.billable ? (
-              <span className="text-xs text-emerald-700 bg-emerald-50 px-2.5 py-1 rounded-full font-medium">Billable</span>
-            ) : (
-              <span className="text-xs text-slate-500 bg-slate-100 px-2.5 py-1 rounded-full font-medium">Non-billable</span>
-            )}
-          </td>
-        )}
         <td className="px-4 py-3.5">
           {(isAdmin || isManager) && (
             <div className="flex items-center gap-1 justify-end">
@@ -260,9 +229,6 @@ export default function Projects() {
                 <th className="text-left px-4 py-3 text-xs font-semibold text-slate-500 uppercase tracking-wide">Client</th>
                 <th className="text-left px-4 py-3 text-xs font-semibold text-slate-500 uppercase tracking-wide">Tracked time</th>
                 <th className="text-left px-4 py-3 text-xs font-semibold text-slate-500 uppercase tracking-wide">Access</th>
-                {hasBillableField && (
-                  <th className="text-left px-4 py-3 text-xs font-semibold text-slate-500 uppercase tracking-wide">Billing</th>
-                )}
                 <th className="px-4 py-3 w-20" />
               </tr>
             </thead>
@@ -366,25 +332,6 @@ export default function Projects() {
             />
           )}
         </FilterPill>
-
-        {/* Billing — single-select; only shown once migration has been run */}
-        {hasBillableField && (
-          <FilterPill
-            label="Billing"
-            valueLabel={billableLabel}
-            hasValue={stagedBillable !== 'all'}
-            onClear={() => setStagedBillable('all')}
-          >
-            {close => (
-              <SelectableList
-                options={BILLABLE_OPTIONS.map(o => ({ value: o.value, label: o.label }))}
-                value={stagedBillable}
-                onChange={v => { setStagedBillable(v); close() }}
-                search={false}
-              />
-            )}
-          </FilterPill>
-        )}
 
         <div className="flex items-center gap-2 ml-auto">
           {anyFilterActive && (

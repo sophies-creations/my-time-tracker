@@ -1,6 +1,6 @@
 import { formatDuration } from './formatters'
 
-const ROLE_LABELS = { admin: 'Admin', manager: 'Manager', member: 'Member', client: 'Client' }
+const ROLE_LABELS = { owner: 'Owner', admin: 'Admin', manager: 'Manager', member: 'Member', client: 'Client' }
 
 // European format: comma as the decimal separator (e.g. "1,5" not "1.5").
 function euDecimal(n, decimals = 2) {

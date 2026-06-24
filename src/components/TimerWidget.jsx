@@ -1,5 +1,5 @@
 import { useState, useEffect, useRef, useMemo } from 'react'
-import { Play, Square, DollarSign, ChevronDown, Plus, Star, Search } from 'lucide-react'
+import { Play, Square, ChevronDown, Plus, Star, Search } from 'lucide-react'
 import { supabase } from '../lib/supabase'
 import { useAuth } from '../contexts/AuthContext'
 import { useData } from '../contexts/DataContext'
@@ -20,7 +20,6 @@ export default function TimerWidget() {
   const [elapsed, setElapsed]         = useState(0)
   const [description, setDescription] = useState('')
   const [projectId, setProjectId]     = useState('')
-  const [billable, setBillable]       = useState(false)
   const [projectOpen, setProjectOpen] = useState(false)
   const [projectSearch, setProjectSearch] = useState('')
   const [showAllOthers, setShowAllOthers] = useState(false)
@@ -58,9 +57,6 @@ export default function TimerWidget() {
   useEffect(() => {
     function onResume(e) {
       const { description: d, projectId: pid } = e.detail ?? {}
-      // Resume always starts a fresh entry. If a timer is running it gets
-      // stopped and saved first — never transfer elapsed time across
-      // projects.
       if (pid) {
         setTimeout(() => handleStartWith(d ?? '', pid, { forceFresh: true }), 0)
       } else {
@@ -83,7 +79,6 @@ export default function TimerWidget() {
       setRunning(data)
       setDescription(data.description ?? '')
       setProjectId(data.project_id ?? '')
-      setBillable(data.billable ?? false)
       setElapsed(Math.floor((Date.now() - new Date(data.start_time).getTime()) / 1000))
     }
   }
@@ -95,7 +90,28 @@ export default function TimerWidget() {
       return
     }
     if (busy) return
+
+    // Optimistic UI: show the timer counting immediately before the DB round-trip.
+    const optimisticStartTime = new Date().toISOString()
+    setDescription(desc ?? '')
+    setProjectId(pid)
+    setElapsed(0)
+    setRunning({
+      id: null,
+      user_id: user.id,
+      start_time: optimisticStartTime,
+      description: desc ?? '',
+      project_id: pid,
+      is_running: true,
+    })
     setBusy(true)
+
+    // running / description / projectId still hold the PRE-CLICK values inside
+    // this async closure — used below for the "preserve pending edits" logic.
+    const prevRunning     = running
+    const prevDescription = description
+    const prevProjectId   = projectId
+
     try {
       const { data: existing } = await supabase
         .from('time_entries')
@@ -105,68 +121,57 @@ export default function TimerWidget() {
         .maybeSingle()
 
       if (existing && !forceFresh) {
-        // Plain Start with a timer already in the DB — adopt it so we don't
-        // create two running entries for the same user.
+        // Adopt the existing DB entry (non-forceFresh path).
         setRunning(existing)
         setDescription(existing.description ?? '')
         setProjectId(existing.project_id ?? '')
-        setBillable(existing.billable ?? false)
         setElapsed(Math.floor((Date.now() - new Date(existing.start_time).getTime()) / 1000))
         toast('Resumed your running timer')
         return
       }
 
       if (existing && forceFresh) {
-        // Stop+save the running entry before starting fresh.
-        const endTime = new Date()
+        // Stop the stale running entry before starting fresh.
+        const endTime      = new Date()
         const stopDuration = Math.floor((endTime - new Date(existing.start_time)) / 1000)
-        const updates = {
-          end_time:   endTime.toISOString(),
-          duration:   stopDuration,
-          is_running: false,
-        }
-        // If the bar reflects this same entry, preserve the user's pending
-        // edits — mirrors the Stop button behaviour.
-        if (running && running.id === existing.id) {
-          updates.description = description.trim()
-          updates.project_id  = projectId || null
-          updates.billable    = billable
+        const updates = { end_time: endTime.toISOString(), duration: stopDuration, is_running: false }
+        if (prevRunning && prevRunning.id === existing.id) {
+          updates.description = prevDescription.trim()
+          updates.project_id  = prevProjectId || null
         }
         const { error: stopErr } = await supabase
           .from('time_entries').update(updates).eq('id', existing.id)
         if (stopErr) {
-          console.error('[Timer] stop failed during resume:', stopErr)
+          console.error('[Timer] stop failed during start:', stopErr)
           toast.error('Could not stop the running timer')
+          setRunning(null); setElapsed(0)
           return
         }
-        setRunning(null)
-        setElapsed(0)
         window.dispatchEvent(new CustomEvent('timeentry:saved'))
       }
 
-      // Reflect the resumed values in the bar before insert.
-      setDescription(desc ?? '')
-      setProjectId(pid)
-
+      // Insert the new entry — reuse the same start_time as the optimistic entry
+      // so elapsed time stays accurate when we replace the optimistic object below.
       const { data, error } = await supabase
         .from('time_entries')
         .insert({
           user_id:     user.id,
           description: (desc ?? '').trim(),
           project_id:  pid,
-          billable,
-          start_time:  new Date().toISOString(),
+          start_time:  optimisticStartTime,
           is_running:  true,
         })
         .select()
         .single()
+
       if (error) throw error
+      // Replace optimistic entry with the real DB row (now has a valid id).
       setRunning(data)
-      setElapsed(0)
-      toast.success('Timer started')
     } catch (err) {
       console.error('[Timer] start failed:', err)
       toast.error(err?.message ?? 'Could not start timer')
+      setRunning(null)
+      setElapsed(0)
     } finally {
       setBusy(false)
     }
@@ -178,6 +183,7 @@ export default function TimerWidget() {
 
   async function handleStop() {
     if (!running || busy) return
+    if (!running.id) return // optimistic-only: DB insert still in flight
     setBusy(true)
     const endTime  = new Date()
     const duration = Math.floor((endTime - new Date(running.start_time)) / 1000)
@@ -190,7 +196,6 @@ export default function TimerWidget() {
           is_running:  false,
           description: description.trim(),
           project_id:  projectId || null,
-          billable,
         })
         .eq('id', running.id)
         .select('id')
@@ -200,7 +205,6 @@ export default function TimerWidget() {
       setElapsed(0)
       setDescription('')
       setProjectId('')
-      setBillable(false)
       toast.success('Entry saved')
       window.dispatchEvent(new CustomEvent('timeentry:saved'))
     } catch (err) {
@@ -250,17 +254,14 @@ export default function TimerWidget() {
     return projects.filter(p => p.name.toLowerCase().includes(q))
   }, [projects, projectSearch])
 
-  // When the picker closes, reset the search so the next open is fresh.
   useEffect(() => {
     if (!projectOpen) setProjectSearch('')
   }, [projectOpen])
 
   const canStart = !!projectId
-  const startTitle = busy
-    ? (running ? 'Saving entry…' : 'Starting timer…')
-    : running
-      ? 'Stop the timer'
-      : (canStart ? 'Start the timer' : 'Pick a project to start the timer')
+  const startTitle = running
+    ? (busy ? 'Saving entry…' : 'Stop the timer')
+    : (canStart ? 'Start the timer' : 'Pick a project to start the timer')
 
   return (
     <div className="border-b border-slate-200 bg-white flex items-center flex-shrink-0 h-14 px-3">
@@ -292,7 +293,6 @@ export default function TimerWidget() {
         </button>
         {projectOpen && (
           <div className="absolute top-full left-0 mt-1 bg-white border border-slate-200 rounded-xl shadow-lg z-50 w-72 py-1">
-            {/* Search — always at the top, searches all projects */}
             <div className="px-2 pt-1 pb-1.5">
               <div className="relative">
                 <Search size={12} className="absolute left-2.5 top-1/2 -translate-y-1/2 text-slate-400" />
@@ -389,15 +389,6 @@ export default function TimerWidget() {
         )}
       </div>
 
-      {/* Billable toggle */}
-      <button
-        onClick={() => setBillable(v => !v)}
-        title={billable ? 'Billable' : 'Non-billable'}
-        className={`flex-shrink-0 w-8 h-8 rounded-lg flex items-center justify-center transition-colors mx-1 ${billable ? 'bg-emerald-100 text-emerald-600 border border-emerald-200' : 'text-slate-300 hover:text-slate-500 hover:bg-slate-50'}`}
-      >
-        <DollarSign size={14} />
-      </button>
-
       <div className="w-px h-8 bg-slate-200 mx-2 flex-shrink-0" />
 
       <span className="font-mono text-sm font-semibold text-slate-700 w-[5.5rem] text-center flex-shrink-0 tabular-nums">
@@ -417,9 +408,8 @@ export default function TimerWidget() {
         }`}
       >
         {running ? <Square size={13} fill="currentColor" /> : <Play size={13} fill="currentColor" />}
-        {running ? (busy ? 'Saving…' : 'Stop') : (busy ? 'Starting…' : 'Start')}
+        {running ? (busy ? 'Saving…' : 'Stop') : 'Start'}
       </button>
-
     </div>
   )
 }

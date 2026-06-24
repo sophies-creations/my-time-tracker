@@ -118,7 +118,8 @@ export function AuthProvider({ children }) {
     await supabase.auth.signOut()
   }
 
-  const isAdmin   = profile?.role === 'admin'
+  const isOwner   = profile?.role === 'owner'
+  const isAdmin   = profile?.role === 'admin' || isOwner
   const isManager = profile?.role === 'manager' || isAdmin
   const isClient  = profile?.role === 'client'
 
@@ -130,6 +131,7 @@ export function AuthProvider({ children }) {
       signIn,
       signUp,
       signOut,
+      isOwner,
       isAdmin,
       isManager,
       isClient,

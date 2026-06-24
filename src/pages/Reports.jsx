@@ -35,7 +35,7 @@ const STATUS_OPTIONS = [
   { key: 'all',       label: 'All entries' },
 ]
 
-const ROLE_LABELS = { admin: 'Admin', manager: 'Manager', member: 'Member', client: 'Client' }
+const ROLE_LABELS = { owner: 'Owner', admin: 'Admin', manager: 'Manager', member: 'Member', client: 'Client' }
 
 export function formatUserLabel(user) {
   if (!user) return 'Unknown user'
@@ -418,6 +418,7 @@ export default function Reports() {
             value={stagedUsers}
             onChange={setStagedUsers}
             activeToggle
+            showSelectAllControls
           />
         </FilterPill>
       )}

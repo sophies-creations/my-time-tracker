@@ -103,7 +103,7 @@ export default function FilterPill({ label, valueLabel = '', hasValue, onClear, 
 // group and optionally an "Inactive" group. The list opens scoped to
 // Active only, with a small Active/Inactive/All switch pinned under the
 // search bar to widen the view.
-export function SelectableList({ options, groups, value, onChange, multi = false, search = true, activeToggle = false }) {
+export function SelectableList({ options, groups, value, onChange, multi = false, search = true, activeToggle = false, showSelectAllControls = false }) {
   const [q, setQ] = useState('')
   const [view, setView] = useState('active')
   const lc = q.trim().toLowerCase()
@@ -151,6 +151,25 @@ export function SelectableList({ options, groups, value, onChange, multi = false
             placeholder="Search…"
             className="w-full text-sm px-2 py-1 rounded border border-slate-200 outline-none focus:border-orchid-400"
           />
+        </div>
+      )}
+      {multi && showSelectAllControls && (
+        <div className="flex items-center gap-3 px-3 py-1.5 border-b border-slate-100">
+          <button
+            type="button"
+            onClick={() => onChange(allOptions.map(o => o.value))}
+            className="text-xs font-medium text-orchid-600 hover:text-orchid-800 transition-colors"
+          >
+            Select all
+          </button>
+          <span className="text-slate-300 text-xs">·</span>
+          <button
+            type="button"
+            onClick={() => onChange([])}
+            className="text-xs font-medium text-slate-500 hover:text-slate-700 transition-colors"
+          >
+            Clear all
+          </button>
         </div>
       )}
       {activeToggle && (

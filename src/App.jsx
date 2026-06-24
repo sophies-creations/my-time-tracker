@@ -6,16 +6,17 @@ import { DataProvider } from './contexts/DataContext'
 import ProtectedRoute from './components/ProtectedRoute'
 import Layout from './components/Layout'
 
-const Login         = lazy(() => import('./pages/Login'))
-const AcceptInvite  = lazy(() => import('./pages/AcceptInvite'))
-const Tracker       = lazy(() => import('./pages/Tracker'))
-const Dashboard     = lazy(() => import('./pages/Dashboard'))
-const Reports       = lazy(() => import('./pages/Reports'))
-const Calendar      = lazy(() => import('./pages/Calendar'))
-const Projects      = lazy(() => import('./pages/Projects'))
-const Clients       = lazy(() => import('./pages/Clients'))
-const Team          = lazy(() => import('./pages/Team'))
-const ClientPortal  = lazy(() => import('./pages/ClientPortal'))
+const Login            = lazy(() => import('./pages/Login'))
+const AcceptInvite     = lazy(() => import('./pages/AcceptInvite'))
+const Tracker          = lazy(() => import('./pages/Tracker'))
+const Dashboard        = lazy(() => import('./pages/Dashboard'))
+const Reports          = lazy(() => import('./pages/Reports'))
+const Calendar         = lazy(() => import('./pages/Calendar'))
+const Projects         = lazy(() => import('./pages/Projects'))
+const Clients          = lazy(() => import('./pages/Clients'))
+const Team             = lazy(() => import('./pages/Team'))
+const ClientPortal     = lazy(() => import('./pages/ClientPortal'))
+const ProfileSettings  = lazy(() => import('./pages/ProfileSettings'))
 
 function PageLoader() {
   return (
@@ -52,6 +53,7 @@ export default function App() {
                   <Route path="/projects"  element={<Projects />} />
                   <Route path="/clients"   element={<Clients />} />
                   <Route path="/team"      element={<Team />} />
+                  <Route path="/profile"   element={<ProfileSettings />} />
                 </Route>
               </Route>
 

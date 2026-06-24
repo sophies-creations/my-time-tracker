@@ -6,6 +6,7 @@ import { useAuth } from '../contexts/AuthContext'
 import { formatDuration } from '../utils/formatters'
 
 const ROLE_STYLES = {
+  owner:   'bg-amber-100 text-amber-700',
   admin:   'bg-red-100 text-red-700',
   manager: 'bg-orchid-100 text-orchid-700',
   member:  'bg-slate-100 text-slate-600',
@@ -138,9 +139,8 @@ export default function TopBar() {
                 Add time
               </button>
               <button
-                disabled
-                className="w-full flex items-center gap-2.5 px-4 py-2 text-sm text-slate-400 cursor-not-allowed"
-                title="Coming soon"
+                onClick={() => { setOpen(false); navigate('/profile') }}
+                className="w-full flex items-center gap-2.5 px-4 py-2 text-sm text-slate-700 hover:bg-slate-50 text-left"
               >
                 <User size={14} />
                 Profile settings
