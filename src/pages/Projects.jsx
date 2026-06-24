@@ -162,8 +162,13 @@ export default function Projects() {
     return list
   }, [projects, search, filterStatus, filterClients, filterAccess, filterBillable, hasBillableField])
 
-  const favorites = useMemo(() => visible.filter(p => favoriteIds.has(p.id)), [visible, favoriteIds])
-  const others    = useMemo(() => visible.filter(p => !favoriteIds.has(p.id)), [visible, favoriteIds])
+  // Favourites float to the top; both groups are sorted A→Z within themselves.
+  const sorted = useMemo(() => {
+    const cmp  = (a, b) => a.name.localeCompare(b.name)
+    const favs = visible.filter(p =>  favoriteIds.has(p.id)).sort(cmp)
+    const rest = visible.filter(p => !favoriteIds.has(p.id)).sort(cmp)
+    return [...favs, ...rest]
+  }, [visible, favoriteIds])
 
   const canCreate = isAdmin || isManager
 
@@ -245,16 +250,9 @@ export default function Projects() {
     )
   }
 
-  function Table({ rows, title }) {
+  function Table({ rows }) {
     return (
-      <div>
-        {title && (
-          <h2 className="text-xs font-semibold text-slate-500 uppercase tracking-wide px-1 mb-2 flex items-center gap-1.5">
-            {title === 'Favorites' && <Star size={12} className="text-amber-400" fill="currentColor" />}
-            {title}
-          </h2>
-        )}
-        <div className="bg-white rounded-xl border border-slate-200 overflow-hidden">
+      <div className="bg-white rounded-xl border border-slate-200 overflow-hidden">
           <table className="w-full text-sm">
             <thead>
               <tr className="bg-slate-50 border-b border-slate-100">
@@ -272,7 +270,6 @@ export default function Projects() {
               {rows.map(p => <Row key={p.id} project={p} />)}
             </tbody>
           </table>
-        </div>
       </div>
     )
   }
@@ -425,10 +422,7 @@ export default function Projects() {
           )}
         </div>
       ) : (
-        <div className="space-y-6">
-          {favorites.length > 0 && <Table rows={favorites} title="Favorites" />}
-          {others.length > 0 && <Table rows={others} title={favorites.length ? 'All projects' : null} />}
-        </div>
+        <Table rows={sorted} />
       )}
 
       {showModal && (
