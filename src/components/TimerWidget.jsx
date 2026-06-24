@@ -26,6 +26,7 @@ export default function TimerWidget({ pinned = false, onTogglePin, showPinContro
   const [showAllOthers, setShowAllOthers] = useState(false)
   const [newProjectName, setNewProjectName] = useState('')
   const [creatingProject, setCreatingProject] = useState(false)
+  const [busy, setBusy] = useState(false)
 
   const projectRef = useRef(null)
 
@@ -91,106 +92,121 @@ export default function TimerWidget({ pinned = false, onTogglePin, showPinContro
       setProjectOpen(true)
       return
     }
-    const { data: existing } = await supabase
-      .from('time_entries')
-      .select('*')
-      .eq('user_id', user.id)
-      .eq('is_running', true)
-      .maybeSingle()
+    if (busy) return
+    setBusy(true)
+    try {
+      const { data: existing } = await supabase
+        .from('time_entries')
+        .select('*')
+        .eq('user_id', user.id)
+        .eq('is_running', true)
+        .maybeSingle()
 
-    if (existing && !forceFresh) {
-      // Plain Start with a timer already in the DB — adopt it so we don't
-      // create two running entries for the same user.
-      setRunning(existing)
-      setDescription(existing.description ?? '')
-      setProjectId(existing.project_id ?? '')
-      setBillable(existing.billable ?? false)
-      setElapsed(Math.floor((Date.now() - new Date(existing.start_time).getTime()) / 1000))
-      toast('Resumed your running timer')
-      return
-    }
-
-    if (existing && forceFresh) {
-      // Resume path: stop+save the running entry before starting fresh.
-      const endTime = new Date()
-      const stopDuration = Math.floor((endTime - new Date(existing.start_time)) / 1000)
-      const updates = {
-        end_time:   endTime.toISOString(),
-        duration:   stopDuration,
-        is_running: false,
-      }
-      // If the bar reflects this same entry, preserve the user's pending
-      // edits — mirrors the Stop button behaviour.
-      if (running && running.id === existing.id) {
-        updates.description = description.trim()
-        updates.project_id  = projectId || null
-        updates.billable    = billable
-      }
-      const { error: stopErr } = await supabase
-        .from('time_entries').update(updates).eq('id', existing.id)
-      if (stopErr) {
-        console.error('[Timer] stop failed during resume:', stopErr)
-        toast.error('Could not stop the running timer')
+      if (existing && !forceFresh) {
+        // Plain Start with a timer already in the DB — adopt it so we don't
+        // create two running entries for the same user.
+        setRunning(existing)
+        setDescription(existing.description ?? '')
+        setProjectId(existing.project_id ?? '')
+        setBillable(existing.billable ?? false)
+        setElapsed(Math.floor((Date.now() - new Date(existing.start_time).getTime()) / 1000))
+        toast('Resumed your running timer')
         return
       }
-      setRunning(null)
+
+      if (existing && forceFresh) {
+        // Stop+save the running entry before starting fresh.
+        const endTime = new Date()
+        const stopDuration = Math.floor((endTime - new Date(existing.start_time)) / 1000)
+        const updates = {
+          end_time:   endTime.toISOString(),
+          duration:   stopDuration,
+          is_running: false,
+        }
+        // If the bar reflects this same entry, preserve the user's pending
+        // edits — mirrors the Stop button behaviour.
+        if (running && running.id === existing.id) {
+          updates.description = description.trim()
+          updates.project_id  = projectId || null
+          updates.billable    = billable
+        }
+        const { error: stopErr } = await supabase
+          .from('time_entries').update(updates).eq('id', existing.id)
+        if (stopErr) {
+          console.error('[Timer] stop failed during resume:', stopErr)
+          toast.error('Could not stop the running timer')
+          return
+        }
+        setRunning(null)
+        setElapsed(0)
+        window.dispatchEvent(new CustomEvent('timeentry:saved'))
+      }
+
+      // Reflect the resumed values in the bar before insert.
+      setDescription(desc ?? '')
+      setProjectId(pid)
+
+      const { data, error } = await supabase
+        .from('time_entries')
+        .insert({
+          user_id:     user.id,
+          description: (desc ?? '').trim(),
+          project_id:  pid,
+          billable,
+          start_time:  new Date().toISOString(),
+          is_running:  true,
+        })
+        .select()
+        .single()
+      if (error) throw error
+      setRunning(data)
       setElapsed(0)
-      window.dispatchEvent(new CustomEvent('timeentry:saved'))
+      toast.success('Timer started')
+    } catch (err) {
+      console.error('[Timer] start failed:', err)
+      toast.error(err?.message ?? 'Could not start timer')
+    } finally {
+      setBusy(false)
     }
-
-    // Reflect the resumed values in the bar before insert.
-    setDescription(desc ?? '')
-    setProjectId(pid)
-
-    const { data, error } = await supabase
-      .from('time_entries')
-      .insert({
-        user_id:    user.id,
-        description: (desc ?? '').trim(),
-        project_id: pid,
-        billable,
-        start_time: new Date().toISOString(),
-        is_running: true,
-      })
-      .select()
-      .single()
-    if (error) {
-      console.error('[Timer] start failed:', error)
-      toast.error(`Could not start timer: ${error.message}${error.code ? ` (${error.code})` : ''}`)
-      return
-    }
-    setRunning(data)
-    setElapsed(0)
-    toast.success('Timer started')
   }
 
   async function handleStart() {
-    return handleStartWith(description, projectId)
+    return handleStartWith(description, projectId, { forceFresh: true })
   }
 
   async function handleStop() {
+    if (!running || busy) return
+    setBusy(true)
     const endTime  = new Date()
     const duration = Math.floor((endTime - new Date(running.start_time)) / 1000)
-    const { error } = await supabase
-      .from('time_entries')
-      .update({
-        end_time:    endTime.toISOString(),
-        duration,
-        is_running:  false,
-        description: description.trim(),
-        project_id:  projectId || null,
-        billable,
-      })
-      .eq('id', running.id)
-    if (error) {
-      console.error('[Timer] stop failed:', error)
-      toast.error(`Could not stop timer: ${error.message}${error.code ? ` (${error.code})` : ''}`)
-      return
+    try {
+      const { data, error } = await supabase
+        .from('time_entries')
+        .update({
+          end_time:    endTime.toISOString(),
+          duration,
+          is_running:  false,
+          description: description.trim(),
+          project_id:  projectId || null,
+          billable,
+        })
+        .eq('id', running.id)
+        .select('id')
+      if (error) throw error
+      if (!data?.length) throw new Error('Entry not found — please refresh and try again')
+      setRunning(null)
+      setElapsed(0)
+      setDescription('')
+      setProjectId('')
+      setBillable(false)
+      toast.success('Entry saved')
+      window.dispatchEvent(new CustomEvent('timeentry:saved'))
+    } catch (err) {
+      console.error('[Timer] stop failed:', err)
+      toast.error(err?.message ?? 'Could not stop timer')
+    } finally {
+      setBusy(false)
     }
-    setRunning(null); setElapsed(0); setDescription('')
-    setProjectId(''); setBillable(false)
-    toast.success('Entry saved')
-    window.dispatchEvent(new CustomEvent('timeentry:saved'))
   }
 
   async function createProject() {
@@ -238,9 +254,11 @@ export default function TimerWidget({ pinned = false, onTogglePin, showPinContro
   }, [projectOpen])
 
   const canStart = !!projectId
-  const startTitle = running
-    ? 'Stop the timer'
-    : (canStart ? 'Start the timer' : 'Pick a project to start the timer')
+  const startTitle = busy
+    ? (running ? 'Saving entry…' : 'Starting timer…')
+    : running
+      ? 'Stop the timer'
+      : (canStart ? 'Start the timer' : 'Pick a project to start the timer')
 
   return (
     <div className="border-b border-slate-200 bg-white flex items-center flex-shrink-0 h-14 px-3">
@@ -386,18 +404,18 @@ export default function TimerWidget({ pinned = false, onTogglePin, showPinContro
 
       <button
         onClick={running ? handleStop : handleStart}
-        disabled={!running && !canStart}
+        disabled={busy || (!running && !canStart)}
         title={startTitle}
         className={`flex items-center gap-1.5 ml-3 px-5 py-2 rounded-lg text-sm font-semibold transition-colors flex-shrink-0 ${
           running
-            ? 'bg-red-500 hover:bg-red-600 text-white'
+            ? 'bg-red-500 hover:bg-red-600 text-white disabled:opacity-60'
             : canStart
-              ? 'bg-orchid-600 hover:bg-orchid-700 text-white'
+              ? 'bg-orchid-600 hover:bg-orchid-700 text-white disabled:opacity-60'
               : 'bg-slate-200 text-slate-400 cursor-not-allowed'
         }`}
       >
         {running ? <Square size={13} fill="currentColor" /> : <Play size={13} fill="currentColor" />}
-        {running ? 'Stop' : 'Start'}
+        {running ? (busy ? 'Saving…' : 'Stop') : (busy ? 'Starting…' : 'Start')}
       </button>
 
       {showPinControl && (

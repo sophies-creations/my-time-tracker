@@ -30,7 +30,7 @@ export default function App() {
     <BrowserRouter>
       <AuthProvider>
         <DataProvider>
-          <Toaster position="top-right" toastOptions={{ duration: 3000 }} />
+          <Toaster position="bottom-right" toastOptions={{ duration: 3000 }} />
           <Suspense fallback={<PageLoader />}>
             <Routes>
               <Route path="/login" element={<Login />} />
