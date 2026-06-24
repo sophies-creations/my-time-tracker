@@ -1,0 +1,52 @@
+import { supabase } from '../lib/supabase'
+
+// Apply an approved shift request to the shifts table.
+export async function applyShiftRequest(req, adminUserId) {
+  if (req.kind === 'day_off' && req.day_off_date) {
+    const { error } = await supabase.from('shifts').insert({
+      user_id:    req.user_id,
+      starts_at:  new Date(req.day_off_date + 'T00:00:00').toISOString(),
+      ends_at:    new Date(req.day_off_date + 'T23:59:59').toISOString(),
+      is_day_off: true,
+      created_by: adminUserId,
+    })
+    return error
+  }
+  if (req.kind === 'create') {
+    const { error } = await supabase.from('shifts').insert({
+      user_id:    req.user_id,
+      starts_at:  req.proposed_starts_at,
+      ends_at:    req.proposed_ends_at,
+      notes:      req.proposed_notes ?? null,
+      created_by: adminUserId,
+    })
+    return error
+  }
+  if (req.kind === 'update' && req.shift_id) {
+    const updates = { notes: req.proposed_notes ?? null }
+    if (req.proposed_starts_at) updates.starts_at = req.proposed_starts_at
+    if (req.proposed_ends_at)   updates.ends_at   = req.proposed_ends_at
+    const { error } = await supabase.from('shifts').update(updates).eq('id', req.shift_id)
+    return error
+  }
+  if (req.kind === 'delete' && req.shift_id) {
+    const { error } = await supabase.from('shifts').delete().eq('id', req.shift_id)
+    return error
+  }
+  return null
+}
+
+// Approve or reject a shift change request, applying the change when approved.
+export async function decideShiftRequest(req, decision, adminNote, adminUserId) {
+  if (decision === 'approved') {
+    const err = await applyShiftRequest(req, adminUserId)
+    if (err) return err
+  }
+  const { error } = await supabase.from('shift_change_requests').update({
+    status:     decision,
+    admin_note: adminNote || null,
+    decided_by: adminUserId,
+    decided_at: new Date().toISOString(),
+  }).eq('id', req.id)
+  return error
+}

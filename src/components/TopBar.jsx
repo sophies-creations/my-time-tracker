@@ -4,6 +4,7 @@ import { ChevronDown, LogOut, User, Shield, Plus, Clock } from 'lucide-react'
 import { supabase } from '../lib/supabase'
 import { useAuth } from '../contexts/AuthContext'
 import { formatDuration } from '../utils/formatters'
+import NotificationBell from './NotificationBell'
 
 const ROLE_STYLES = {
   owner:   'bg-amber-100 text-amber-700',
@@ -89,6 +90,8 @@ export default function TopBar() {
 
   return (
     <header className="relative z-30 h-12 bg-white border-b border-slate-200 flex items-center justify-end px-4 flex-shrink-0 gap-3">
+      <NotificationBell />
+
       {/* Minimal running indicator — only on non-tracker pages, links back to tracker */}
       {timerStartTime && !isTrackerPage && (
         <button

@@ -112,6 +112,7 @@ export default function Team() {
     toast.success(approve ? 'Name change approved' : 'Request rejected')
     fetchNameRequests()
     fetchMembers()
+    window.dispatchEvent(new CustomEvent('sophiefy:approvals-changed'))
   }
 
   const initials = m => (m.full_name || m.email).slice(0, 1).toUpperCase()
