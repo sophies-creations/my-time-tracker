@@ -58,7 +58,7 @@ export default function Sidebar() {
             <div className="w-8 h-8 bg-orchid-600 rounded-lg flex items-center justify-center flex-shrink-0">
               <Clock size={15} className="text-white" />
             </div>
-            <span className="text-base font-bold text-white tracking-tight">TimeTrack</span>
+            <span className="text-base font-bold text-white tracking-tight">Sophiefy</span>
           </>
         )}
       </div>

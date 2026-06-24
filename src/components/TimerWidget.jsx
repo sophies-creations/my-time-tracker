@@ -1,5 +1,5 @@
 import { useState, useEffect, useRef, useMemo } from 'react'
-import { Play, Square, DollarSign, ChevronDown, Plus, Star, Search, Pin } from 'lucide-react'
+import { Play, Square, DollarSign, ChevronDown, Plus, Star, Search } from 'lucide-react'
 import { supabase } from '../lib/supabase'
 import { useAuth } from '../contexts/AuthContext'
 import { useData } from '../contexts/DataContext'
@@ -13,7 +13,7 @@ const PROJECT_COLORS = [
   '#84CC16', '#F97316', '#6366F1',
 ]
 
-export default function TimerWidget({ pinned = false, onTogglePin, showPinControl = false }) {
+export default function TimerWidget() {
   const { user } = useAuth()
   const { projects, favoriteIds, toggleFavorite, refreshProjects } = useData()
   const [running, setRunning]         = useState(null)
@@ -32,9 +32,11 @@ export default function TimerWidget({ pinned = false, onTogglePin, showPinContro
 
   useEffect(() => { if (user) fetchRunningEntry() }, [user])
 
-  // Broadcast running state so other UI (e.g. TopBar indicator) can react.
+  // Broadcast running state so TopBar indicator can show elapsed time.
   useEffect(() => {
-    window.dispatchEvent(new CustomEvent('timer:state', { detail: { running: !!running } }))
+    window.dispatchEvent(new CustomEvent('timer:state', {
+      detail: { running: !!running, startTime: running?.start_time ?? null },
+    }))
   }, [running])
 
   useEffect(() => {
@@ -418,20 +420,6 @@ export default function TimerWidget({ pinned = false, onTogglePin, showPinContro
         {running ? (busy ? 'Saving…' : 'Stop') : (busy ? 'Starting…' : 'Start')}
       </button>
 
-      {showPinControl && (
-        <button
-          onClick={onTogglePin}
-          title={pinned ? 'Unpin timer bar (auto-hide on other pages)' : 'Pin timer bar (always show)'}
-          aria-pressed={pinned}
-          className={`ml-2 w-8 h-8 rounded-lg flex items-center justify-center flex-shrink-0 transition-colors ${
-            pinned
-              ? 'bg-orchid-100 text-orchid-700'
-              : 'text-slate-400 hover:text-slate-600 hover:bg-slate-50'
-          }`}
-        >
-          <Pin size={14} fill={pinned ? 'currentColor' : 'none'} className={pinned ? '' : ''} />
-        </button>
-      )}
     </div>
   )
 }

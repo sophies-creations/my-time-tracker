@@ -94,7 +94,7 @@ export default function ClientPortal() {
               <Clock size={15} className="text-white" />
             </div>
             <div>
-              <span className="text-base font-bold text-slate-800">TimeTrack</span>
+              <span className="text-base font-bold text-slate-800">Sophiefy</span>
               {clientRecord && (
                 <span className="ml-2 text-sm text-slate-400">· {clientRecord.name}</span>
               )}

@@ -1,7 +1,9 @@
 import { useState, useRef, useEffect } from 'react'
-import { ChevronDown, LogOut, User, Shield, Plus } from 'lucide-react'
+import { useNavigate, useLocation } from 'react-router-dom'
+import { ChevronDown, LogOut, User, Shield, Plus, Clock } from 'lucide-react'
 import { supabase } from '../lib/supabase'
 import { useAuth } from '../contexts/AuthContext'
+import { formatDuration } from '../utils/formatters'
 
 const ROLE_STYLES = {
   admin:   'bg-red-100 text-red-700',
@@ -18,8 +20,12 @@ function initials(profile) {
 
 export default function TopBar() {
   const { user, profile, signOut } = useAuth()
+  const navigate = useNavigate()
+  const location = useLocation()
+  const isTrackerPage = location.pathname.startsWith('/tracker')
   const [open, setOpen] = useState(false)
-  const [timerRunning, setTimerRunning] = useState(false)
+  const [timerStartTime, setTimerStartTime] = useState(null)
+  const [elapsed, setElapsed] = useState(0)
   const wrapRef = useRef(null)
 
   useEffect(() => {
@@ -30,24 +36,48 @@ export default function TopBar() {
     return () => document.removeEventListener('mousedown', onDown)
   }, [])
 
-  // Track whether a timer is running so we can show a global indicator.
+  // Initial check on mount for an already-running entry.
   useEffect(() => {
     if (!user) return
     let cancelled = false
     supabase.from('time_entries')
-      .select('id')
+      .select('id, start_time')
       .eq('user_id', user.id)
       .eq('is_running', true)
       .maybeSingle()
-      .then(({ data }) => { if (!cancelled) setTimerRunning(!!data) })
+      .then(({ data }) => {
+        if (!cancelled && data) {
+          setTimerStartTime(data.start_time)
+          setElapsed(Math.floor((Date.now() - new Date(data.start_time).getTime()) / 1000))
+        }
+      })
     return () => { cancelled = true }
   }, [user])
 
+  // Stay in sync with TimerWidget state broadcasts.
   useEffect(() => {
-    function onState(e) { setTimerRunning(!!e.detail?.running) }
+    function onState(e) {
+      const { running, startTime } = e.detail ?? {}
+      if (running && startTime) {
+        setTimerStartTime(startTime)
+        setElapsed(Math.floor((Date.now() - new Date(startTime).getTime()) / 1000))
+      } else {
+        setTimerStartTime(null)
+        setElapsed(0)
+      }
+    }
     window.addEventListener('timer:state', onState)
     return () => window.removeEventListener('timer:state', onState)
   }, [])
+
+  // Tick elapsed once per second while a timer is running.
+  useEffect(() => {
+    if (!timerStartTime) return
+    const id = setInterval(() => {
+      setElapsed(Math.floor((Date.now() - new Date(timerStartTime).getTime()) / 1000))
+    }, 1000)
+    return () => clearInterval(id)
+  }, [timerStartTime])
 
   function openAddTime() {
     setOpen(false)
@@ -58,19 +88,22 @@ export default function TopBar() {
 
   return (
     <header className="relative z-30 h-12 bg-white border-b border-slate-200 flex items-center justify-end px-4 flex-shrink-0 gap-3">
-      {timerRunning && (
-        <span
-          title="A timer is running"
-          aria-label="Timer running"
-          className="flex items-center gap-1.5 text-[11px] font-medium text-red-600"
+      {/* Minimal running indicator — only on non-tracker pages, links back to tracker */}
+      {timerStartTime && !isTrackerPage && (
+        <button
+          onClick={() => navigate('/tracker')}
+          title="Timer running — click to go to Time Tracker"
+          className="flex items-center gap-1.5 text-[11px] font-medium text-red-600 hover:text-red-700 transition-colors"
         >
           <span className="relative flex w-2.5 h-2.5">
             <span className="absolute inset-0 rounded-full bg-red-500 opacity-60 animate-ping" />
             <span className="relative w-2.5 h-2.5 rounded-full bg-red-500" />
           </span>
-          Tracking
-        </span>
+          <Clock size={11} />
+          <span className="font-mono tabular-nums">{formatDuration(elapsed)}</span>
+        </button>
       )}
+
       <div className="relative" ref={wrapRef}>
         <button
           onClick={() => setOpen(v => !v)}
