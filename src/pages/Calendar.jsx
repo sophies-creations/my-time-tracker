@@ -3,7 +3,7 @@ import {
   format, startOfWeek, endOfWeek, eachDayOfInterval,
   addWeeks, subWeeks, parseISO,
 } from 'date-fns'
-import { ChevronLeft, ChevronRight, X, Moon } from 'lucide-react'
+import { ChevronLeft, ChevronRight, X, Moon, Eye, EyeOff } from 'lucide-react'
 import { supabase } from '../lib/supabase'
 import { useAuth } from '../contexts/AuthContext'
 import { decideShiftRequest } from '../utils/shifts'
@@ -11,8 +11,7 @@ import toast from 'react-hot-toast'
 
 const WEEK_OPT   = { weekStartsOn: 1 }
 const KIND_LABEL = { create: 'New shift', update: 'Change shift', delete: 'Delete shift', day_off: 'Day off' }
-const ROLE_ORDER  = ['owner', 'admin', 'manager', 'member']
-const ROLE_LABELS = { owner: 'Owners', admin: 'Admins', manager: 'Managers', member: 'Members' }
+const STAFF_ROLES = ['owner', 'admin', 'manager']
 
 export default function Calendar() {
   const { user, profile, isAdmin, isManager } = useAuth()
@@ -24,6 +23,7 @@ export default function Calendar() {
   const [loading, setLoading]     = useState(true)
   const [shiftModal, setShiftModal] = useState(null)
   const [refreshTick, setRefreshTick] = useState(0)
+  const [showHidden, setShowHidden] = useState(false)
 
   const weekStart = startOfWeek(weekRef, WEEK_OPT)
   const weekEnd   = endOfWeek(weekRef, WEEK_OPT)
@@ -40,15 +40,25 @@ export default function Calendar() {
   async function fetchAll() {
     setLoading(true)
     const startDate = format(weekStart, 'yyyy-MM-dd')
-    const endDate   = format(weekEnd, 'yyyy-MM-dd')
+    const endDate   = format(weekEnd,   'yyyy-MM-dd')
 
     const SELECT_REQS = '*, user:profiles!shift_change_requests_user_id_fkey(id, full_name, email), shift:shifts(id, starts_at, ends_at, notes)'
     const reqQuery = isManager
       ? supabase.from('shift_change_requests').select(SELECT_REQS).eq('status', 'pending').order('created_at', { ascending: false })
       : supabase.from('shift_change_requests').select(SELECT_REQS).order('created_at', { ascending: false })
 
+    // Managers fetch everyone (all non-client active, including hidden rows).
+    // Members fetch only other members and only visible (non-hidden) ones.
+    const profileQuery = isManager
+      ? supabase.from('profiles')
+          .select('id, full_name, email, role, schedule_hidden')
+          .neq('role', 'client').eq('active', true).order('full_name')
+      : supabase.from('profiles')
+          .select('id, full_name, email, role, schedule_hidden')
+          .eq('role', 'member').eq('active', true).eq('schedule_hidden', false).order('full_name')
+
     const [membersRes, cellsRes, requestsRes] = await Promise.all([
-      supabase.from('profiles').select('id, full_name, email, role').neq('role', 'client').eq('active', true).order('full_name'),
+      profileQuery,
       supabase.from('schedule_cells').select('user_id, work_date, content').gte('work_date', startDate).lte('work_date', endDate),
       reqQuery,
     ])
@@ -95,6 +105,18 @@ export default function Calendar() {
     }
   }
 
+  async function toggleRowHidden(memberId, currentlyHidden) {
+    const { data, error } = await supabase
+      .from('profiles')
+      .update({ schedule_hidden: !currentlyHidden })
+      .eq('id', memberId)
+      .select('id, schedule_hidden')
+    if (error) { toast.error(error.message || 'Could not update visibility'); return }
+    if (!data || data.length === 0) { toast.error('Update blocked — check your permissions'); return }
+    setMembers(prev => prev.map(m => m.id === memberId ? { ...m, schedule_hidden: !currentlyHidden } : m))
+    toast.success(!currentlyHidden ? 'Row hidden from members' : 'Row restored')
+  }
+
   async function decideRequest(req, decision, adminNote) {
     const err = await decideShiftRequest(req, decision, adminNote, user.id)
     if (err) { toast.error(err.message || 'Action failed'); return }
@@ -103,26 +125,35 @@ export default function Calendar() {
     window.dispatchEvent(new CustomEvent('sophiefy:approvals-changed'))
   }
 
+  // Members first, then staff (owner/admin/manager). Hidden rows filtered unless showHidden.
   const roleGroups = useMemo(() => {
-    const byRole = {}
-    for (const m of members) {
-      const r = m.role ?? 'member'
-      if (!byRole[r]) byRole[r] = []
-      byRole[r].push(m)
-    }
+    const memberList = members.filter(m => m.role === 'member')
+    const staffList  = members.filter(m => STAFF_ROLES.includes(m.role))
     const rows = []
-    for (const role of ROLE_ORDER) {
-      if (!byRole[role]?.length) continue
-      rows.push({ type: 'separator', role, label: ROLE_LABELS[role] ?? role })
-      for (const m of byRole[role]) rows.push({ type: 'member', member: m })
-    }
-    return rows
-  }, [members])
 
+    const visibleMembers = showHidden ? memberList : memberList.filter(m => !m.schedule_hidden)
+    if (visibleMembers.length) {
+      rows.push({ type: 'separator', label: 'Members' })
+      visibleMembers.forEach(m => rows.push({ type: 'member', member: m, isHidden: !!m.schedule_hidden }))
+    }
+
+    if (isManager && staffList.length) {
+      const visibleStaff = showHidden ? staffList : staffList.filter(m => !m.schedule_hidden)
+      if (visibleStaff.length) {
+        rows.push({ type: 'separator', label: 'Staff' })
+        visibleStaff.forEach(m => rows.push({ type: 'member', member: m, isHidden: !!m.schedule_hidden }))
+      }
+    }
+
+    return rows
+  }, [members, isManager, showHidden])
+
+  const hiddenCount = useMemo(() => members.filter(m => m.schedule_hidden).length, [members])
   const today = format(new Date(), 'yyyy-MM-dd')
 
   return (
     <div>
+      {/* Header */}
       <div className="flex items-center justify-between mb-6 gap-3 flex-wrap">
         <h1 className="text-2xl font-bold text-slate-800">Team Schedule</h1>
         <div className="flex items-center gap-2">
@@ -132,6 +163,19 @@ export default function Calendar() {
               className="flex items-center gap-1.5 px-3 py-1.5 text-xs font-medium text-amber-700 bg-amber-50 hover:bg-amber-100 rounded-lg transition-colors"
             >
               <Moon size={12} /> Request day off
+            </button>
+          )}
+          {isManager && hiddenCount > 0 && (
+            <button
+              onClick={() => setShowHidden(v => !v)}
+              className={`flex items-center gap-1.5 px-3 py-1.5 text-xs font-medium rounded-lg transition-colors ${
+                showHidden
+                  ? 'text-orchid-700 bg-orchid-100 hover:bg-orchid-200'
+                  : 'text-slate-500 bg-slate-100 hover:bg-slate-200'
+              }`}
+            >
+              {showHidden ? <Eye size={12} /> : <EyeOff size={12} />}
+              {showHidden ? `Showing ${hiddenCount} hidden` : `${hiddenCount} hidden`}
             </button>
           )}
           <button onClick={() => setWeekRef(subWeeks(weekRef, 1))} className="p-2 hover:bg-slate-100 rounded-lg">
@@ -180,13 +224,21 @@ export default function Calendar() {
                 <tr>
                   <td colSpan={8} className="px-4 py-12 text-center text-sm text-slate-400">
                     No team members found
+                    {isManager && hiddenCount > 0 && (
+                      <button
+                        onClick={() => setShowHidden(true)}
+                        className="ml-2 text-orchid-600 underline hover:text-orchid-700"
+                      >
+                        show {hiddenCount} hidden
+                      </button>
+                    )}
                   </td>
                 </tr>
               )}
               {roleGroups.map((row, i) => {
                 if (row.type === 'separator') {
                   return (
-                    <tr key={`sep-${row.role}`}>
+                    <tr key={`sep-${row.label}`}>
                       <td
                         colSpan={8}
                         className="px-4 py-1.5 text-[10px] font-bold uppercase tracking-widest text-slate-400 border-b border-slate-200 bg-slate-50"
@@ -197,16 +249,27 @@ export default function Calendar() {
                   )
                 }
 
-                const m          = row.member
-                const isLastRow  = i === roleGroups.length - 1
-                const borderB    = !isLastRow ? 'border-b border-slate-100' : ''
+                const m         = row.member
+                const isHidden  = row.isHidden
+                const isLastRow = i === roleGroups.length - 1
+                const borderB   = !isLastRow ? 'border-b border-slate-100' : ''
 
                 return (
-                  <tr key={m.id} className="group/row">
-                    <td className={`sticky left-0 z-10 bg-white px-4 py-0 border-r border-slate-200 text-sm font-medium text-slate-700 whitespace-nowrap ${borderB}`}
-                      style={{ minHeight: 48 }}>
-                      <div className="flex items-center min-h-[48px]">
-                        {m.full_name || m.email}
+                  <tr key={m.id} className={`group/row ${isHidden ? 'opacity-40' : ''}`}>
+                    <td className={`sticky left-0 z-10 bg-white px-3 py-0 border-r border-slate-200 ${borderB}`}>
+                      <div className="flex items-center justify-between gap-1 min-h-[48px]">
+                        <span className={`text-sm font-medium whitespace-nowrap ${isHidden ? 'line-through text-slate-400' : 'text-slate-700'}`}>
+                          {m.full_name || m.email}
+                        </span>
+                        {isManager && (
+                          <button
+                            onClick={() => toggleRowHidden(m.id, isHidden)}
+                            title={isHidden ? 'Restore row (make visible)' : 'Hide row from members'}
+                            className={`opacity-0 group-hover/row:opacity-100 transition-opacity flex-shrink-0 p-1 rounded hover:bg-slate-100 ${isHidden ? 'text-orchid-500' : 'text-slate-300 hover:text-slate-500'}`}
+                          >
+                            {isHidden ? <EyeOff size={13} /> : <Eye size={13} />}
+                          </button>
+                        )}
                       </div>
                     </td>
                     {weekDays.map((day, di) => {
@@ -295,7 +358,7 @@ function ScheduleCell({ content, isManager, onSave }) {
     setDraft('')
   }
 
-  const isOff = content.toLowerCase() === 'off'
+  const isOff     = content.toLowerCase() === 'off'
   const cellBg    = isOff ? 'bg-red-50'     : content ? 'bg-emerald-50' : 'bg-white'
   const textColor = isOff ? 'text-red-700 font-semibold' : content ? 'text-emerald-800' : 'text-slate-300'
 
@@ -311,7 +374,7 @@ function ScheduleCell({ content, isManager, onSave }) {
             if (e.key === 'Escape') cancel()
           }}
           onBlur={commit}
-          className="w-full min-h-[48px] px-2 py-1.5 text-xs text-slate-800 bg-white border-2 border-orchid-400 outline-none"
+          className="w-full min-h-[48px] px-2 py-1.5 text-xs text-center text-slate-800 bg-white border-2 border-orchid-400 outline-none"
         />
         <div className="absolute top-0.5 right-0.5 flex gap-0.5 z-10">
           <button
@@ -330,7 +393,7 @@ function ScheduleCell({ content, isManager, onSave }) {
   return (
     <div
       onClick={startEdit}
-      className={`group/cell relative w-full min-h-[48px] px-2 py-1.5 flex items-center ${cellBg} ${isManager ? 'cursor-text' : ''}`}
+      className={`group/cell relative w-full min-h-[48px] flex items-center justify-center ${cellBg} ${isManager ? 'cursor-text' : ''}`}
     >
       <span className={`text-xs leading-snug ${textColor}`}>{content}</span>
       {isManager && !content && (
@@ -446,7 +509,7 @@ function RequestsPanel({ requests, onDecide }) {
 // ─── ShiftModal ───────────────────────────────────────────────────────────────
 
 function ShiftModal({ mode, shift, day, kind, members, currentUser, isAdmin, onClose, onSaved }) {
-  const isAdminPath    = mode === 'create' || mode === 'edit'
+  const isAdminPath     = mode === 'create' || mode === 'edit'
   const isDeleteRequest = mode === 'request' && kind === 'delete'
   const isDayOff        = mode === 'request' && kind === 'day_off'
 

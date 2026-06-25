@@ -7,17 +7,17 @@ import {
 import { useAuth } from '../contexts/AuthContext'
 
 const NAV = [
-  { to: '/tracker',   Icon: Clock,            label: 'Time Tracker' },
-  { to: '/dashboard', Icon: LayoutDashboard,  label: 'Dashboard' },
-  { to: '/reports',   Icon: BarChart2,         label: 'Reports' },
-  { to: '/calendar',  Icon: CalendarDays,      label: 'Schedule' },
-  { to: '/projects',  Icon: FolderOpen,        label: 'Projects' },
-  { to: '/team',      Icon: Users,             label: 'Team',      managerOnly: true },
-  { to: '/clients',   Icon: Building2,         label: 'Clients',   adminOnly: true },
+  { to: '/tracker',   Icon: Clock,           label: 'Time Tracker' },
+  { to: '/dashboard', Icon: LayoutDashboard, label: 'Dashboard' },
+  { to: '/reports',   Icon: BarChart2,        label: 'Reports' },
+  { to: '/calendar',  Icon: CalendarDays,     label: 'Schedule',   noClient: true },
+  { to: '/projects',  Icon: FolderOpen,       label: 'Projects' },
+  { to: '/team',      Icon: Users,            label: 'Team',       managerOnly: true },
+  { to: '/clients',   Icon: Building2,        label: 'Clients',    adminOnly: true },
 ]
 
 export default function Sidebar() {
-  const { user, isAdmin, isManager } = useAuth()
+  const { user, isAdmin, isManager, isClient } = useAuth()
   const storageKey = user ? `tt-sidebar-collapsed:${user.id}` : null
   const [collapsed, setCollapsed] = useState(() => {
     if (typeof window === 'undefined' || !storageKey) return false
@@ -30,8 +30,9 @@ export default function Sidebar() {
   }, [collapsed, storageKey])
 
   const visible = NAV.filter(item => {
-    if (item.adminOnly  && !isAdmin)   return false
+    if (item.adminOnly   && !isAdmin)   return false
     if (item.managerOnly && !isManager) return false
+    if (item.noClient    && isClient)   return false
     return true
   })
 
@@ -40,25 +41,36 @@ export default function Sidebar() {
       className={`${collapsed ? 'w-14' : 'w-56'} flex flex-col flex-shrink-0 transition-[width] duration-200`}
       style={{ backgroundColor: '#1e1a2e' }}
     >
-      {/* Logo + hamburger toggle */}
+      {/* Logo row */}
       <div
-        className={`${collapsed ? 'px-2 justify-center' : 'px-3'} py-4 flex items-center gap-2`}
+        className={`${collapsed ? 'px-2 justify-center' : 'px-3 justify-between'} py-4 flex items-center`}
         style={{ borderBottom: '1px solid #2d2647' }}
       >
-        <button
-          onClick={() => setCollapsed(c => !c)}
-          title={collapsed ? 'Expand sidebar' : 'Collapse sidebar'}
-          aria-label={collapsed ? 'Expand sidebar' : 'Collapse sidebar'}
-          className="w-8 h-8 rounded-lg flex items-center justify-center text-slate-300 hover:bg-white/10 hover:text-white transition-colors flex-shrink-0"
-        >
-          <Menu size={16} />
-        </button>
-        {!collapsed && (
+        {collapsed ? (
+          <button
+            onClick={() => setCollapsed(c => !c)}
+            title="Expand sidebar"
+            aria-label="Expand sidebar"
+            className="w-8 h-8 rounded-lg flex items-center justify-center text-slate-300 hover:bg-white/10 hover:text-white transition-colors"
+          >
+            <Menu size={16} />
+          </button>
+        ) : (
           <>
-            <div className="w-8 h-8 bg-orchid-600 rounded-lg flex items-center justify-center flex-shrink-0">
-              <Clock size={15} className="text-white" />
+            <div className="flex items-center gap-2">
+              <div className="w-8 h-8 bg-orchid-600 rounded-lg flex items-center justify-center flex-shrink-0">
+                <Clock size={15} className="text-white" />
+              </div>
+              <span className="text-base font-bold text-white tracking-tight">Sophiefy</span>
             </div>
-            <span className="text-base font-bold text-white tracking-tight">Sophiefy</span>
+            <button
+              onClick={() => setCollapsed(c => !c)}
+              title="Collapse sidebar"
+              aria-label="Collapse sidebar"
+              className="w-8 h-8 rounded-lg flex items-center justify-center text-slate-300 hover:bg-white/10 hover:text-white transition-colors flex-shrink-0"
+            >
+              <Menu size={16} />
+            </button>
           </>
         )}
       </div>
