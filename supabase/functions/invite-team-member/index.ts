@@ -5,7 +5,8 @@
 // Deploy: supabase functions deploy invite-team-member
 import { createClient } from 'npm:@supabase/supabase-js@2'
 
-const ALLOWED_ROLES = ['member', 'manager', 'admin']
+const ALLOWED_ROLES  = ['member', 'manager', 'admin']
+const INVITE_ROLES   = ['owner', 'admin']
 const EMAIL_RE = /^[^\s@]+@[^\s@]+\.[^\s@]+$/
 
 const corsHeaders = {
@@ -46,8 +47,8 @@ Deno.serve(async (req) => {
     .eq('id', caller.id)
     .single()
 
-  if (profileErr || callerProfile?.role !== 'admin') {
-    return json({ error: 'Only admins can invite team members' }, 403)
+  if (profileErr || !INVITE_ROLES.includes(callerProfile?.role)) {
+    return json({ error: 'Only owners and admins can invite team members' }, 403)
   }
 
   let body: { email?: string; role?: string; redirectTo?: string }
