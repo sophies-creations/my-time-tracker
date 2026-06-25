@@ -19,11 +19,12 @@ const KIND_LABEL = {
 }
 
 export default function Calendar() {
-  const { user, profile, isAdmin } = useAuth()
+  const { user, profile, isAdmin, isManager } = useAuth()
   const [weekRef, setWeekRef]     = useState(new Date())
   const [shifts, setShifts]       = useState([])
   const [members, setMembers]     = useState([])
-  const [requests, setRequests]   = useState([])
+  const [adminRequests, setAdminRequests]   = useState([])
+  const [memberRequests, setMemberRequests] = useState([])
   const [loading, setLoading]     = useState(true)
   const [shiftModal, setShiftModal] = useState(null)
 
@@ -31,7 +32,7 @@ export default function Calendar() {
   const weekEnd   = endOfWeek(weekRef, WEEK_OPT)
   const weekDays  = eachDayOfInterval({ start: weekStart, end: weekEnd })
 
-  useEffect(() => { fetchAll() }, [weekRef]) // eslint-disable-line react-hooks/exhaustive-deps
+  useEffect(() => { fetchAll() }, [weekRef, isManager]) // eslint-disable-line react-hooks/exhaustive-deps
 
   // Re-fetch when another page (e.g. TopBar bell) approved/rejected something.
   useEffect(() => {
@@ -44,6 +45,16 @@ export default function Calendar() {
     setLoading(true)
     const startISO = weekStart.toISOString()
     const endISO   = weekEnd.toISOString()
+
+    const SELECT_REQS = '*, user:profiles!shift_change_requests_user_id_fkey(id, full_name, email), shift:shifts(id, starts_at, ends_at, notes)'
+
+    // Manager+: all pending from all users. Member: own requests, any status.
+    const reqQuery = isManager
+      ? supabase.from('shift_change_requests').select(SELECT_REQS)
+          .eq('status', 'pending').order('created_at', { ascending: false })
+      : supabase.from('shift_change_requests').select(SELECT_REQS)
+          .order('created_at', { ascending: false })
+
     const [shiftsRes, membersRes, requestsRes] = await Promise.all([
       supabase.from('shifts')
         .select('*, user:profiles(id, full_name, email, role)')
@@ -53,14 +64,17 @@ export default function Calendar() {
       supabase.from('profiles')
         .select('id, full_name, email, role')
         .neq('role', 'client').eq('active', true).order('full_name'),
-      supabase.from('shift_change_requests')
-        .select('*, user:profiles!shift_change_requests_user_id_fkey(id, full_name, email), shift:shifts(id, starts_at, ends_at, notes)')
-        .eq('status', 'pending')
-        .order('created_at', { ascending: false }),
+      reqQuery,
     ])
     setShifts(shiftsRes.data ?? [])
     setMembers(membersRes.data ?? [])
-    setRequests(requestsRes.data ?? [])
+    if (isManager) {
+      setAdminRequests(requestsRes.data ?? [])
+      setMemberRequests([])
+    } else {
+      setMemberRequests(requestsRes.data ?? [])
+      setAdminRequests([])
+    }
     setLoading(false)
   }
 
@@ -137,7 +151,7 @@ export default function Calendar() {
                     <ShiftCard
                       key={s.id}
                       shift={s}
-                      isAdmin={isAdmin}
+                      isAdmin={isManager}
                       isOwn={s.user_id === user?.id}
                       onEdit={() => setShiftModal({ mode: 'edit', shift: s })}
                       onDelete={() => deleteShift(s)}
@@ -147,7 +161,7 @@ export default function Calendar() {
                   ))}
                 </div>
                 <div className="mt-2 space-y-0.5">
-                  {isAdmin ? (
+                  {isManager ? (
                     <button
                       onClick={() => setShiftModal({ mode: 'create', day })}
                       className="w-full text-xs text-orchid-700 hover:text-orchid-900 hover:bg-orchid-50 rounded px-2 py-1 flex items-center justify-center gap-1"
@@ -177,22 +191,22 @@ export default function Calendar() {
         </div>
       )}
 
-      {/* Inline requests panel for admins */}
-      {isAdmin && requests.length > 0 && (
+      {/* Manager+: inline pending requests panel */}
+      {isManager && adminRequests.length > 0 && (
         <div className="mt-6">
           <h2 className="text-base font-semibold text-slate-700 mb-3">
             Pending schedule requests
-            <span className="ml-2 text-sm font-normal text-slate-400">({requests.length})</span>
+            <span className="ml-2 text-sm font-normal text-slate-400">({adminRequests.length})</span>
           </h2>
-          <RequestsPanel requests={requests} onDecide={decideRequest} />
+          <RequestsPanel requests={adminRequests} onDecide={decideRequest} />
         </div>
       )}
 
-      {/* Members: show their own pending requests */}
-      {!isAdmin && requests.length > 0 && (
+      {/* Members: full request history with status badges */}
+      {!isManager && memberRequests.length > 0 && (
         <div className="mt-6">
-          <h2 className="text-base font-semibold text-slate-700 mb-3">Your pending requests</h2>
-          <RequestsPanel requests={requests} onDecide={null} />
+          <h2 className="text-base font-semibold text-slate-700 mb-3">My requests</h2>
+          <RequestsPanel requests={memberRequests} onDecide={null} />
         </div>
       )}
 
@@ -276,6 +290,12 @@ function ShiftCard({ shift, isAdmin, isOwn, onEdit, onDelete, onRequestChange, o
 
 // ─── RequestsPanel ────────────────────────────────────────────────────────────
 
+const STATUS_STYLES = {
+  pending:  'text-amber-700 bg-amber-50',
+  approved: 'text-emerald-700 bg-emerald-50',
+  rejected: 'text-red-700 bg-red-50',
+}
+
 function RequestsPanel({ requests, onDecide }) {
   const [notes, setNotes] = useState({})
   const canDecide = !!onDecide
@@ -289,19 +309,31 @@ function RequestsPanel({ requests, onDecide }) {
           <div key={req.id} className="p-4">
             <div className="flex items-start justify-between gap-3 mb-2">
               <div className="min-w-0">
-                <p className="text-sm font-semibold text-slate-800 truncate">{name}</p>
+                {canDecide && <p className="text-sm font-semibold text-slate-800 truncate">{name}</p>}
                 <p className="text-xs text-slate-400 mt-0.5">
                   {format(parseISO(req.created_at), 'MMM d, HH:mm')}
                 </p>
               </div>
-              <span className="text-[10px] uppercase tracking-wide font-semibold text-orchid-700 bg-orchid-50 rounded-full px-2 py-0.5 shrink-0 whitespace-nowrap">
-                {action}
-              </span>
+              <div className="flex items-center gap-1.5 shrink-0 flex-wrap justify-end">
+                <span className="text-[10px] uppercase tracking-wide font-semibold text-orchid-700 bg-orchid-50 rounded-full px-2 py-0.5 whitespace-nowrap">
+                  {action}
+                </span>
+                {!canDecide && (
+                  <span className={`text-[10px] uppercase tracking-wide font-semibold rounded-full px-2 py-0.5 whitespace-nowrap ${STATUS_STYLES[req.status] ?? STATUS_STYLES.pending}`}>
+                    {req.status}
+                  </span>
+                )}
+              </div>
             </div>
 
             {req.kind === 'day_off' && req.day_off_date && (
-              <p className="text-xs text-slate-600 mb-2">
-                Date: <span className="font-medium">{req.day_off_date}</span>
+              <p className="text-xs text-slate-600 mb-1.5">
+                Date: <span className="font-medium">
+                  {req.day_off_date}
+                  {req.day_off_date_end && req.day_off_date_end !== req.day_off_date && (
+                    <> → {req.day_off_date_end}</>
+                  )}
+                </span>
               </p>
             )}
             {req.shift && req.kind !== 'create' && req.kind !== 'day_off' && (
@@ -312,10 +344,20 @@ function RequestsPanel({ requests, onDecide }) {
               </p>
             )}
             {req.kind !== 'delete' && req.kind !== 'day_off' && req.proposed_starts_at && (
-              <p className="text-xs text-slate-700 mb-2">
+              <p className="text-xs text-slate-700 mb-1.5">
                 <span className="font-medium">Proposed:</span>{' '}
                 {format(parseISO(req.proposed_starts_at), 'EEE, MMM d HH:mm')}–{format(parseISO(req.proposed_ends_at), 'HH:mm')}
                 {req.proposed_notes && <> · {req.proposed_notes}</>}
+              </p>
+            )}
+            {req.member_note && (
+              <p className="text-xs text-slate-500 mb-1.5">
+                <span className="font-medium">Reason:</span> {req.member_note}
+              </p>
+            )}
+            {!canDecide && req.admin_note && (
+              <p className="text-xs text-slate-500 mb-1.5">
+                <span className="font-medium">Response:</span> {req.admin_note}
               </p>
             )}
 
@@ -362,12 +404,14 @@ function ShiftModal({ mode, shift, day, kind, members, currentUser, isAdmin, onC
   const initialStart = shift?.starts_at ? format(parseISO(shift.starts_at), 'HH:mm') : '09:00'
   const initialEnd   = shift?.ends_at   ? format(parseISO(shift.ends_at),   'HH:mm') : '17:00'
 
-  const [userId, setUserId]       = useState(shift?.user_id || currentUser?.id || '')
-  const [date, setDate]           = useState(initialDate)
-  const [startTime, setStartTime] = useState(initialStart)
-  const [endTime, setEndTime]     = useState(initialEnd)
-  const [notes, setNotes]         = useState(shift?.notes ?? '')
-  const [saving, setSaving]       = useState(false)
+  const [userId, setUserId]         = useState(shift?.user_id || currentUser?.id || '')
+  const [date, setDate]             = useState(initialDate)
+  const [startTime, setStartTime]   = useState(initialStart)
+  const [endTime, setEndTime]       = useState(initialEnd)
+  const [notes, setNotes]           = useState(shift?.notes ?? '')
+  const [memberNote, setMemberNote] = useState('')
+  const [dayOffEnd, setDayOffEnd]   = useState(initialDate)
+  const [saving, setSaving]         = useState(false)
 
   const title =
     mode === 'create'  ? 'Add shift' :
@@ -402,18 +446,22 @@ function ShiftModal({ mode, shift, day, kind, members, currentUser, isAdmin, onC
         }
       } else if (isDayOff) {
         if (!date) { toast.error('Pick a date'); setSaving(false); return }
+        const effectiveEnd = dayOffEnd >= date ? dayOffEnd : date
         const { error } = await supabase.from('shift_change_requests').insert({
-          user_id:      currentUser.id,
-          kind:         'day_off',
-          day_off_date: date,
+          user_id:          currentUser.id,
+          kind:             'day_off',
+          day_off_date:     date,
+          day_off_date_end: effectiveEnd !== date ? effectiveEnd : null,
+          member_note:      memberNote.trim() || null,
         }).select()
         if (error) throw error
         toast.success('Day-off request submitted for approval')
       } else {
         const payload = {
-          user_id:  currentUser.id,
-          shift_id: shift?.id ?? null,
+          user_id:     currentUser.id,
+          shift_id:    shift?.id ?? null,
           kind,
+          member_note: memberNote.trim() || null,
         }
         if (!isDeleteRequest) {
           payload.proposed_starts_at = new Date(`${date}T${startTime}:00`).toISOString()
@@ -460,14 +508,28 @@ function ShiftModal({ mode, shift, day, kind, members, currentUser, isAdmin, onC
             </div>
           )}
 
-          {/* Day-off: only a date picker */}
+          {/* Day-off: date range picker */}
           {isDayOff && (
-            <div>
-              <label className="block text-xs font-medium text-slate-600 mb-1.5">Date</label>
-              <input
-                type="date" value={date} onChange={e => setDate(e.target.value)}
-                className="w-full border border-slate-200 rounded-lg px-3 py-2 text-sm outline-none focus:ring-2 focus:ring-orchid-500"
-              />
+            <div className="grid grid-cols-2 gap-3">
+              <div>
+                <label className="block text-xs font-medium text-slate-600 mb-1.5">Start date</label>
+                <input
+                  type="date" value={date}
+                  onChange={e => {
+                    setDate(e.target.value)
+                    if (dayOffEnd < e.target.value) setDayOffEnd(e.target.value)
+                  }}
+                  className="w-full border border-slate-200 rounded-lg px-3 py-2 text-sm outline-none focus:ring-2 focus:ring-orchid-500"
+                />
+              </div>
+              <div>
+                <label className="block text-xs font-medium text-slate-600 mb-1.5">End date</label>
+                <input
+                  type="date" value={dayOffEnd} min={date}
+                  onChange={e => setDayOffEnd(e.target.value)}
+                  className="w-full border border-slate-200 rounded-lg px-3 py-2 text-sm outline-none focus:ring-2 focus:ring-orchid-500"
+                />
+              </div>
             </div>
           )}
 
@@ -506,6 +568,18 @@ function ShiftModal({ mode, shift, day, kind, members, currentUser, isAdmin, onC
                 />
               </div>
             </>
+          )}
+
+          {/* Reason field — for all request types (not admin direct-add) */}
+          {!isAdminPath && (
+            <div>
+              <label className="block text-xs font-medium text-slate-600 mb-1.5">Reason (optional)</label>
+              <input
+                type="text" value={memberNote} onChange={e => setMemberNote(e.target.value)}
+                placeholder="e.g. Medical appointment"
+                className="w-full border border-slate-200 rounded-lg px-3 py-2 text-sm outline-none focus:ring-2 focus:ring-orchid-500"
+              />
+            </div>
           )}
         </div>
 

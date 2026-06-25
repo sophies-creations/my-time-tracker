@@ -14,7 +14,7 @@ const KIND_LABEL = {
 }
 
 export default function NotificationBell() {
-  const { user, isAdmin } = useAuth()
+  const { user, isAdmin, isManager } = useAuth()
   const [shiftReqs, setShiftReqs] = useState([])
   const [nameReqs,  setNameReqs]  = useState([])
   const [open, setOpen]           = useState(false)
@@ -22,13 +22,13 @@ export default function NotificationBell() {
   const panelRef = useRef(null)
 
   useEffect(() => {
-    if (!isAdmin) return
+    if (!isManager) return
     fetchAll()
 
     function onChanged() { fetchAll() }
     window.addEventListener('sophiefy:approvals-changed', onChanged)
     return () => window.removeEventListener('sophiefy:approvals-changed', onChanged)
-  }, [isAdmin]) // eslint-disable-line react-hooks/exhaustive-deps
+  }, [isManager]) // eslint-disable-line react-hooks/exhaustive-deps
 
   useEffect(() => {
     if (!open) return
@@ -74,7 +74,7 @@ export default function NotificationBell() {
     window.dispatchEvent(new CustomEvent('sophiefy:approvals-changed'))
   }
 
-  if (!isAdmin) return null
+  if (!isManager) return null
 
   const total = shiftReqs.length + nameReqs.length
 
@@ -132,14 +132,24 @@ export default function NotificationBell() {
                           </span>
                         </div>
                         {req.kind === 'day_off' && req.day_off_date && (
-                          <p className="text-xs text-slate-600 mb-1.5">
-                            Day off: <span className="font-medium">{req.day_off_date}</span>
+                          <p className="text-xs text-slate-600 mb-1">
+                            Day off: <span className="font-medium">
+                              {req.day_off_date}
+                              {req.day_off_date_end && req.day_off_date_end !== req.day_off_date && (
+                                <> → {req.day_off_date_end}</>
+                              )}
+                            </span>
                           </p>
                         )}
                         {req.kind !== 'delete' && req.kind !== 'day_off' && req.proposed_starts_at && (
-                          <p className="text-xs text-slate-600 mb-1.5">
+                          <p className="text-xs text-slate-600 mb-1">
                             {format(parseISO(req.proposed_starts_at), 'EEE, MMM d HH:mm')}–{format(parseISO(req.proposed_ends_at), 'HH:mm')}
                             {req.proposed_notes && <> · {req.proposed_notes}</>}
+                          </p>
+                        )}
+                        {req.member_note && (
+                          <p className="text-xs text-slate-500 mb-1">
+                            Reason: <span className="italic">{req.member_note}</span>
                           </p>
                         )}
                         <input
