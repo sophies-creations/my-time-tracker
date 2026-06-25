@@ -106,13 +106,11 @@ export default function Calendar() {
   }
 
   async function toggleRowHidden(memberId, currentlyHidden) {
-    const { data, error } = await supabase
-      .from('profiles')
-      .update({ schedule_hidden: !currentlyHidden })
-      .eq('id', memberId)
-      .select('id, schedule_hidden')
+    const { error } = await supabase.rpc('toggle_schedule_hidden', {
+      p_user_id: memberId,
+      p_hidden:  !currentlyHidden,
+    })
     if (error) { toast.error(error.message || 'Could not update visibility'); return }
-    if (!data || data.length === 0) { toast.error('Update blocked — check your permissions'); return }
     setMembers(prev => prev.map(m => m.id === memberId ? { ...m, schedule_hidden: !currentlyHidden } : m))
     toast.success(!currentlyHidden ? 'Row hidden from members' : 'Row restored')
   }
