@@ -27,19 +27,22 @@ export default function Calendar() {
   const [memberRequests, setMemberRequests] = useState([])
   const [loading, setLoading]     = useState(true)
   const [shiftModal, setShiftModal] = useState(null)
+  const [refreshTick, setRefreshTick] = useState(0)
 
   const weekStart = startOfWeek(weekRef, WEEK_OPT)
   const weekEnd   = endOfWeek(weekRef, WEEK_OPT)
   const weekDays  = eachDayOfInterval({ start: weekStart, end: weekEnd })
 
-  useEffect(() => { fetchAll() }, [weekRef, isManager]) // eslint-disable-line react-hooks/exhaustive-deps
+  useEffect(() => { fetchAll() }, [weekRef, isManager, refreshTick]) // eslint-disable-line react-hooks/exhaustive-deps
 
   // Re-fetch when another page (e.g. TopBar bell) approved/rejected something.
+  // Using a tick counter avoids stale-closure issues: the event listener never
+  // captures fetchAll directly, it just nudges the effect that does.
   useEffect(() => {
-    function onChanged() { fetchAll() }
+    function onChanged() { setRefreshTick(t => t + 1) }
     window.addEventListener('sophiefy:approvals-changed', onChanged)
     return () => window.removeEventListener('sophiefy:approvals-changed', onChanged)
-  }, []) // eslint-disable-line react-hooks/exhaustive-deps
+  }, [])
 
   async function fetchAll() {
     setLoading(true)
