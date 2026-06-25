@@ -1,5 +1,5 @@
-import { useState, useEffect } from 'react'
-import { UserPlus, Copy, Check, Trash2, UserX, UserCheck, Pencil, X } from 'lucide-react'
+import { useState, useEffect, useMemo } from 'react'
+import { UserPlus, Copy, Check, Trash2, UserX, UserCheck, Pencil, X, Eye, EyeOff } from 'lucide-react'
 import { supabase } from '../lib/supabase'
 import { useAuth } from '../contexts/AuthContext'
 import InviteModal from '../components/InviteModal'
@@ -11,15 +11,18 @@ const ROLE_BADGE = {
   manager: 'bg-orchid-100 text-orchid-700',
   member:  'bg-slate-100 text-slate-600',
 }
+const ROLE_ORDER  = ['owner', 'admin', 'manager', 'member']
+const ROLE_LABELS = { owner: 'Owner', admin: 'Admins', manager: 'Managers', member: 'Members' }
 
 export default function Team() {
-  const { profile: myProfile, isAdmin, isOwner } = useAuth()
-  const [members, setMembers]       = useState([])
-  const [invites, setInvites]       = useState([])
+  const { profile: myProfile, isAdmin, isOwner, isManager } = useAuth()
+  const [members, setMembers]           = useState([])
+  const [invites, setInvites]           = useState([])
   const [nameRequests, setNameRequests] = useState([])
-  const [showInvite, setShowInvite] = useState(false)
-  const [copiedId, setCopiedId]     = useState(null)
-  const [editingName, setEditingName] = useState(null) // { memberId, value }
+  const [showInvite, setShowInvite]     = useState(false)
+  const [copiedId, setCopiedId]         = useState(null)
+  const [editingName, setEditingName]   = useState(null) // { memberId, value }
+  const [showHidden, setShowHidden]     = useState(false)
 
   useEffect(() => {
     fetchMembers()
@@ -27,7 +30,7 @@ export default function Team() {
       fetchInvites()
       fetchNameRequests()
     }
-  }, [isAdmin])
+  }, [isAdmin]) // eslint-disable-line react-hooks/exhaustive-deps
 
   async function fetchMembers() {
     const { data } = await supabase
@@ -65,12 +68,27 @@ export default function Team() {
     fetchMembers()
   }
 
+  // Uses SECURITY DEFINER RPC to avoid silent RLS block on direct .update()
   async function toggleActive(member) {
     const newActive = !member.active
-    const { error } = await supabase.from('profiles').update({ active: newActive }).eq('id', member.id)
-    if (error) { toast.error('Update failed'); return }
+    const { error } = await supabase.rpc('toggle_active', {
+      p_user_id: member.id,
+      p_active:  newActive,
+    })
+    if (error) { toast.error(error.message || 'Update failed'); return }
     toast.success(newActive ? 'Account reactivated' : 'Account deactivated — all data preserved')
     fetchMembers()
+  }
+
+  // Reuses schedule_hidden + toggle_schedule_hidden RPC (same concept, same field)
+  async function toggleRowHidden(memberId, currentlyHidden) {
+    const { error } = await supabase.rpc('toggle_schedule_hidden', {
+      p_user_id: memberId,
+      p_hidden:  !currentlyHidden,
+    })
+    if (error) { toast.error(error.message || 'Could not update visibility'); return }
+    setMembers(prev => prev.map(m => m.id === memberId ? { ...m, schedule_hidden: !currentlyHidden } : m))
+    toast.success(!currentlyHidden ? 'Row hidden' : 'Row restored')
   }
 
   async function revokeInvite(id) {
@@ -94,7 +112,7 @@ export default function Team() {
     const trimmed = editingName?.value?.trim()
     if (!trimmed || trimmed.length < 2) { toast.error('Name must be at least 2 characters'); return }
     const { error } = await supabase.rpc('admin_set_display_name', {
-      p_user_id: memberId,
+      p_user_id:  memberId,
       p_new_name: trimmed,
     })
     if (error) { toast.error(error.message ?? 'Update failed'); return }
@@ -106,7 +124,7 @@ export default function Team() {
   async function reviewNameRequest(id, approve) {
     const { error } = await supabase.rpc('review_username_request', {
       p_request_id: id,
-      p_approve: approve,
+      p_approve:    approve,
     })
     if (error) { toast.error(error.message ?? 'Review failed'); return }
     toast.success(approve ? 'Name change approved' : 'Request rejected')
@@ -115,43 +133,109 @@ export default function Team() {
     window.dispatchEvent(new CustomEvent('sophiefy:approvals-changed'))
   }
 
+  const hiddenCount = useMemo(() => members.filter(m => m.schedule_hidden).length, [members])
+
+  // Group by role (owner→admin→manager→member), alphabetical within each group.
+  // Emits separator and member rows; filters hidden unless showHidden is on.
+  const groupedMembers = useMemo(() => {
+    const byRole = {}
+    for (const m of members) {
+      const r = m.role ?? 'member'
+      if (!byRole[r]) byRole[r] = []
+      byRole[r].push(m)
+    }
+    const rows = []
+    for (const role of ROLE_ORDER) {
+      if (!byRole[role]?.length) continue
+      const group = showHidden ? byRole[role] : byRole[role].filter(m => !m.schedule_hidden)
+      if (!group.length) continue
+      rows.push({ type: 'separator', role, label: ROLE_LABELS[role] ?? role })
+      group.forEach(m => rows.push({ type: 'member', member: m, isHidden: !!m.schedule_hidden }))
+    }
+    return rows
+  }, [members, showHidden])
+
   const initials = m => (m.full_name || m.email).slice(0, 1).toUpperCase()
 
   return (
     <div>
-      <div className="flex items-center justify-between mb-6">
+      <div className="flex items-center justify-between mb-6 gap-3 flex-wrap">
         <h1 className="text-2xl font-bold text-slate-800">Team</h1>
-        {isAdmin && (
-          <button
-            onClick={() => setShowInvite(true)}
-            className="flex items-center gap-2 bg-orchid-600 hover:bg-orchid-700 text-white px-4 py-2 rounded-lg text-sm font-medium transition-colors"
-          >
-            <UserPlus size={16} />
-            Invite member
-          </button>
-        )}
+        <div className="flex items-center gap-2">
+          {isManager && hiddenCount > 0 && (
+            <button
+              onClick={() => setShowHidden(v => !v)}
+              className={`flex items-center gap-1.5 px-3 py-1.5 text-xs font-medium rounded-lg transition-colors ${
+                showHidden
+                  ? 'text-orchid-700 bg-orchid-100 hover:bg-orchid-200'
+                  : 'text-slate-500 bg-slate-100 hover:bg-slate-200'
+              }`}
+            >
+              {showHidden ? <Eye size={12} /> : <EyeOff size={12} />}
+              {showHidden ? `Showing ${hiddenCount} hidden` : `${hiddenCount} hidden`}
+            </button>
+          )}
+          {isAdmin && (
+            <button
+              onClick={() => setShowInvite(true)}
+              className="flex items-center gap-2 bg-orchid-600 hover:bg-orchid-700 text-white px-4 py-2 rounded-lg text-sm font-medium transition-colors"
+            >
+              <UserPlus size={16} />
+              Invite member
+            </button>
+          )}
+        </div>
       </div>
 
-      <div className="bg-white rounded-xl border border-slate-200 divide-y divide-slate-100 mb-6">
-        {members.map(member => {
-          const isMe = member.id === myProfile?.id
-          // An admin can edit this member's role only if it's not their own row
-          // and the target is not an owner (only owners can touch owner rows).
+      <div className="bg-white rounded-xl border border-slate-200 mb-6 overflow-hidden">
+        {groupedMembers.length === 0 && (
+          <div className="px-5 py-10 text-center text-slate-400 text-sm">
+            No team members found
+            {isManager && hiddenCount > 0 && (
+              <button
+                onClick={() => setShowHidden(true)}
+                className="ml-2 text-orchid-600 underline hover:text-orchid-700"
+              >
+                show {hiddenCount} hidden
+              </button>
+            )}
+          </div>
+        )}
+
+        {groupedMembers.map(row => {
+          if (row.type === 'separator') {
+            return (
+              <div
+                key={`sep-${row.role}`}
+                className="px-5 py-1.5 bg-slate-50 border-b border-slate-100"
+              >
+                <span className="text-[10px] font-bold uppercase tracking-widest text-slate-400">
+                  {row.label}
+                </span>
+              </div>
+            )
+          }
+
+          const member    = row.member
+          const isHidden  = row.isHidden
+          const isMe      = member.id === myProfile?.id
           const canEditRole =
             isAdmin && !isMe && (member.role !== 'owner' || isOwner)
-
           const roleOptions = isOwner
             ? ['member', 'manager', 'admin', 'owner']
             : ['member', 'manager', 'admin']
-
           const isEditingThisName = editingName?.memberId === member.id
 
           return (
             <div
               key={member.id}
-              className={`flex items-center gap-4 px-5 py-4 ${!member.active ? 'opacity-50' : ''}`}
+              className={`group/row flex items-center gap-4 px-5 py-4 border-b border-slate-100 last:border-b-0 transition-opacity ${
+                isHidden ? 'opacity-40' : !member.active ? 'opacity-50' : ''
+              }`}
             >
-              <div className={`w-9 h-9 rounded-full flex items-center justify-center font-semibold text-sm flex-shrink-0 ${member.active ? 'bg-orchid-100 text-orchid-600' : 'bg-slate-100 text-slate-400'}`}>
+              <div className={`w-9 h-9 rounded-full flex items-center justify-center font-semibold text-sm flex-shrink-0 ${
+                member.active ? 'bg-orchid-100 text-orchid-600' : 'bg-slate-100 text-slate-400'
+              }`}>
                 {initials(member)}
               </div>
 
@@ -178,7 +262,7 @@ export default function Team() {
                   </div>
                 ) : (
                   <div className="flex items-center gap-1.5 group/name">
-                    <p className="text-sm font-medium text-slate-800 truncate">
+                    <p className={`text-sm font-medium truncate ${isHidden ? 'line-through text-slate-400' : 'text-slate-800'}`}>
                       {member.full_name || <span className="italic text-slate-400 font-normal">Unnamed</span>}
                       {!member.active && <span className="ml-2 text-xs text-red-500 font-normal">Deactivated</span>}
                     </p>
@@ -196,7 +280,7 @@ export default function Team() {
                 <p className="text-xs text-slate-400 truncate">{member.email}</p>
               </div>
 
-              <div className="flex items-center gap-2">
+              <div className="flex items-center gap-1.5">
                 {canEditRole ? (
                   <select
                     value={member.role}
@@ -217,18 +301,33 @@ export default function Team() {
                   <button
                     onClick={() => toggleActive(member)}
                     title={member.active ? 'Deactivate account' : 'Reactivate account'}
-                    className={`p-1.5 rounded-lg transition-colors ${member.active ? 'text-slate-400 hover:text-red-600 hover:bg-red-50' : 'text-slate-400 hover:text-emerald-600 hover:bg-emerald-50'}`}
+                    className={`p-1.5 rounded-lg transition-colors ${
+                      member.active
+                        ? 'text-slate-400 hover:text-red-600 hover:bg-red-50'
+                        : 'text-slate-400 hover:text-emerald-600 hover:bg-emerald-50'
+                    }`}
                   >
                     {member.active ? <UserX size={15} /> : <UserCheck size={15} />}
+                  </button>
+                )}
+
+                {isManager && !isMe && (
+                  <button
+                    onClick={() => toggleRowHidden(member.id, isHidden)}
+                    title={isHidden ? 'Restore row' : 'Hide row'}
+                    className={`p-1.5 rounded-lg transition-colors ${
+                      isHidden
+                        ? 'text-orchid-500 hover:text-orchid-700 hover:bg-orchid-50'
+                        : 'opacity-0 group-hover/row:opacity-100 text-slate-300 hover:text-slate-500 hover:bg-slate-100'
+                    }`}
+                  >
+                    {isHidden ? <EyeOff size={14} /> : <Eye size={14} />}
                   </button>
                 )}
               </div>
             </div>
           )
         })}
-        {!members.length && (
-          <div className="px-5 py-10 text-center text-slate-400 text-sm">No team members found</div>
-        )}
       </div>
 
       {/* Pending name-change requests (admin/owner only) */}
@@ -286,7 +385,10 @@ export default function Team() {
                   {copiedId === invite.id ? <Check size={13} className="text-green-600" /> : <Copy size={13} />}
                   Copy link
                 </button>
-                <button onClick={() => revokeInvite(invite.id)} className="p-1.5 text-slate-400 hover:text-red-600 hover:bg-red-50 rounded-lg transition-colors">
+                <button
+                  onClick={() => revokeInvite(invite.id)}
+                  className="p-1.5 text-slate-400 hover:text-red-600 hover:bg-red-50 rounded-lg transition-colors"
+                >
                   <Trash2 size={15} />
                 </button>
               </div>

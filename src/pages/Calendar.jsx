@@ -356,9 +356,22 @@ function ScheduleCell({ content, isManager, onSave }) {
     setDraft('')
   }
 
-  const isOff     = content.toLowerCase() === 'off'
-  const cellBg    = isOff ? 'bg-red-50'     : content ? 'bg-emerald-50' : 'bg-white'
-  const textColor = isOff ? 'text-red-700 font-semibold' : content ? 'text-emerald-800' : 'text-slate-300'
+  const lower      = content.toLowerCase()
+  const isOff      = lower === 'off'
+  const isNoInfo   = lower === 'no info'
+  const isTraining = lower === 'training'
+
+  const cellBg = isOff      ? 'bg-red-50'
+               : isNoInfo   ? 'bg-slate-200'
+               : isTraining ? 'bg-fuchsia-50'
+               : content    ? 'bg-emerald-50'
+               :               'bg-white'
+
+  const textColor = isOff      ? 'text-red-700 font-semibold'
+                  : isNoInfo   ? 'text-slate-500 font-semibold'
+                  : isTraining ? 'text-fuchsia-700 font-semibold'
+                  : content    ? 'text-emerald-800'
+                  :               'text-slate-300'
 
   if (editing) {
     return (
@@ -374,7 +387,7 @@ function ScheduleCell({ content, isManager, onSave }) {
           onBlur={commit}
           className="w-full min-h-[48px] px-2 py-1.5 text-xs text-center text-slate-800 bg-white border-2 border-orchid-400 outline-none"
         />
-        <div className="absolute top-0.5 right-0.5 flex gap-0.5 z-10">
+        <div className="absolute top-0.5 right-0.5 grid grid-cols-2 gap-0.5 z-10">
           <button
             onMouseDown={e => { e.preventDefault(); setDraft('OFF') }}
             className="text-[9px] px-1 py-0.5 rounded bg-red-100 text-red-700 font-bold hover:bg-red-200 leading-none"
@@ -383,6 +396,14 @@ function ScheduleCell({ content, isManager, onSave }) {
             onMouseDown={e => { e.preventDefault(); setDraft('FULL') }}
             className="text-[9px] px-1 py-0.5 rounded bg-emerald-100 text-emerald-700 font-bold hover:bg-emerald-200 leading-none"
           >FULL</button>
+          <button
+            onMouseDown={e => { e.preventDefault(); setDraft('NO INFO') }}
+            className="text-[9px] px-1 py-0.5 rounded bg-slate-200 text-slate-600 font-bold hover:bg-slate-300 leading-none"
+          >N/I</button>
+          <button
+            onMouseDown={e => { e.preventDefault(); setDraft('TRAINING') }}
+            className="text-[9px] px-1 py-0.5 rounded bg-fuchsia-100 text-fuchsia-700 font-bold hover:bg-fuchsia-200 leading-none"
+          >TRN</button>
         </div>
       </div>
     )
