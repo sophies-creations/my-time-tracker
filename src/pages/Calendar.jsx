@@ -1,28 +1,24 @@
-import { useState, useEffect, useMemo } from 'react'
+import { useState, useEffect, useRef, useMemo } from 'react'
 import {
   format, startOfWeek, endOfWeek, eachDayOfInterval,
   addWeeks, subWeeks, parseISO,
 } from 'date-fns'
-import { ChevronLeft, ChevronRight, Plus, X, Moon } from 'lucide-react'
+import { ChevronLeft, ChevronRight, X, Moon } from 'lucide-react'
 import { supabase } from '../lib/supabase'
 import { useAuth } from '../contexts/AuthContext'
 import { decideShiftRequest } from '../utils/shifts'
 import toast from 'react-hot-toast'
 
-const WEEK_OPT = { weekStartsOn: 1 }
-
-const KIND_LABEL = {
-  create:  'New shift',
-  update:  'Change shift',
-  delete:  'Delete shift',
-  day_off: 'Day off',
-}
+const WEEK_OPT   = { weekStartsOn: 1 }
+const KIND_LABEL = { create: 'New shift', update: 'Change shift', delete: 'Delete shift', day_off: 'Day off' }
+const ROLE_ORDER  = ['owner', 'admin', 'manager', 'member']
+const ROLE_LABELS = { owner: 'Owners', admin: 'Admins', manager: 'Managers', member: 'Members' }
 
 export default function Calendar() {
   const { user, profile, isAdmin, isManager } = useAuth()
   const [weekRef, setWeekRef]     = useState(new Date())
-  const [shifts, setShifts]       = useState([])
   const [members, setMembers]     = useState([])
+  const [cellMap, setCellMap]     = useState({})  // { userId: { dateStr: content } }
   const [adminRequests, setAdminRequests]   = useState([])
   const [memberRequests, setMemberRequests] = useState([])
   const [loading, setLoading]     = useState(true)
@@ -35,9 +31,6 @@ export default function Calendar() {
 
   useEffect(() => { fetchAll() }, [weekRef, isManager, refreshTick]) // eslint-disable-line react-hooks/exhaustive-deps
 
-  // Re-fetch when another page (e.g. TopBar bell) approved/rejected something.
-  // Using a tick counter avoids stale-closure issues: the event listener never
-  // captures fetchAll directly, it just nudges the effect that does.
   useEffect(() => {
     function onChanged() { setRefreshTick(t => t + 1) }
     window.addEventListener('sophiefy:approvals-changed', onChanged)
@@ -46,31 +39,29 @@ export default function Calendar() {
 
   async function fetchAll() {
     setLoading(true)
-    const startISO = weekStart.toISOString()
-    const endISO   = weekEnd.toISOString()
+    const startDate = format(weekStart, 'yyyy-MM-dd')
+    const endDate   = format(weekEnd, 'yyyy-MM-dd')
 
     const SELECT_REQS = '*, user:profiles!shift_change_requests_user_id_fkey(id, full_name, email), shift:shifts(id, starts_at, ends_at, notes)'
-
-    // Manager+: all pending from all users. Member: own requests, any status.
     const reqQuery = isManager
-      ? supabase.from('shift_change_requests').select(SELECT_REQS)
-          .eq('status', 'pending').order('created_at', { ascending: false })
-      : supabase.from('shift_change_requests').select(SELECT_REQS)
-          .order('created_at', { ascending: false })
+      ? supabase.from('shift_change_requests').select(SELECT_REQS).eq('status', 'pending').order('created_at', { ascending: false })
+      : supabase.from('shift_change_requests').select(SELECT_REQS).order('created_at', { ascending: false })
 
-    const [shiftsRes, membersRes, requestsRes] = await Promise.all([
-      supabase.from('shifts')
-        .select('*, user:profiles(id, full_name, email, role)')
-        .gte('starts_at', startISO)
-        .lte('starts_at', endISO)
-        .order('starts_at'),
-      supabase.from('profiles')
-        .select('id, full_name, email, role')
-        .neq('role', 'client').eq('active', true).order('full_name'),
+    const [membersRes, cellsRes, requestsRes] = await Promise.all([
+      supabase.from('profiles').select('id, full_name, email, role').neq('role', 'client').eq('active', true).order('full_name'),
+      supabase.from('schedule_cells').select('user_id, work_date, content').gte('work_date', startDate).lte('work_date', endDate),
       reqQuery,
     ])
-    setShifts(shiftsRes.data ?? [])
+
     setMembers(membersRes.data ?? [])
+
+    const map = {}
+    for (const cell of (cellsRes.data ?? [])) {
+      if (!map[cell.user_id]) map[cell.user_id] = {}
+      map[cell.user_id][cell.work_date] = cell.content
+    }
+    setCellMap(map)
+
     if (isManager) {
       setAdminRequests(requestsRes.data ?? [])
       setMemberRequests([])
@@ -81,23 +72,27 @@ export default function Calendar() {
     setLoading(false)
   }
 
-  const shiftsByDay = useMemo(() => {
-    const byDay = {}
-    for (const s of shifts) {
-      const key = format(parseISO(s.starts_at), 'yyyy-MM-dd')
-      if (!byDay[key]) byDay[key] = []
-      byDay[key].push(s)
+  async function saveCell(memberId, dateStr, content) {
+    const trimmed = content.trim()
+    if (trimmed === '') {
+      const { error } = await supabase.from('schedule_cells').delete().eq('user_id', memberId).eq('work_date', dateStr)
+      if (error) { toast.error(error.message || 'Delete failed'); return }
+      setCellMap(prev => {
+        const next = { ...prev, [memberId]: { ...(prev[memberId] ?? {}) } }
+        delete next[memberId][dateStr]
+        return next
+      })
+    } else {
+      const { data, error } = await supabase.from('schedule_cells')
+        .upsert({ user_id: memberId, work_date: dateStr, content: trimmed }, { onConflict: 'user_id,work_date' })
+        .select()
+      if (error) { toast.error(error.message || 'Save failed'); return }
+      if (!data || data.length === 0) { toast.error('Save blocked — check your role permissions'); return }
+      setCellMap(prev => ({
+        ...prev,
+        [memberId]: { ...(prev[memberId] ?? {}), [dateStr]: trimmed },
+      }))
     }
-    return byDay
-  }, [shifts])
-
-  async function deleteShift(shift) {
-    const who = shift.user?.full_name || shift.user?.email || 'this member'
-    if (!confirm(`Delete shift for ${who}?`)) return
-    const { error } = await supabase.from('shifts').delete().eq('id', shift.id)
-    if (error) { toast.error(error.message || 'Delete failed'); return }
-    toast.success('Shift deleted')
-    fetchAll()
   }
 
   async function decideRequest(req, decision, adminNote) {
@@ -108,11 +103,37 @@ export default function Calendar() {
     window.dispatchEvent(new CustomEvent('sophiefy:approvals-changed'))
   }
 
+  const roleGroups = useMemo(() => {
+    const byRole = {}
+    for (const m of members) {
+      const r = m.role ?? 'member'
+      if (!byRole[r]) byRole[r] = []
+      byRole[r].push(m)
+    }
+    const rows = []
+    for (const role of ROLE_ORDER) {
+      if (!byRole[role]?.length) continue
+      rows.push({ type: 'separator', role, label: ROLE_LABELS[role] ?? role })
+      for (const m of byRole[role]) rows.push({ type: 'member', member: m })
+    }
+    return rows
+  }, [members])
+
+  const today = format(new Date(), 'yyyy-MM-dd')
+
   return (
     <div>
       <div className="flex items-center justify-between mb-6 gap-3 flex-wrap">
         <h1 className="text-2xl font-bold text-slate-800">Team Schedule</h1>
         <div className="flex items-center gap-2">
+          {!isManager && (
+            <button
+              onClick={() => setShiftModal({ mode: 'request', kind: 'day_off', day: new Date() })}
+              className="flex items-center gap-1.5 px-3 py-1.5 text-xs font-medium text-amber-700 bg-amber-50 hover:bg-amber-100 rounded-lg transition-colors"
+            >
+              <Moon size={12} /> Request day off
+            </button>
+          )}
           <button onClick={() => setWeekRef(subWeeks(weekRef, 1))} className="p-2 hover:bg-slate-100 rounded-lg">
             <ChevronLeft size={18} />
           </button>
@@ -130,71 +151,89 @@ export default function Calendar() {
           <div className="w-6 h-6 border-2 border-orchid-600 border-t-transparent rounded-full animate-spin" />
         </div>
       ) : (
-        <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-7 gap-2">
-          {weekDays.map(day => {
-            const key       = format(day, 'yyyy-MM-dd')
-            const dayShifts = shiftsByDay[key] ?? []
-            const isToday   = key === format(new Date(), 'yyyy-MM-dd')
-            return (
-              <div
-                key={key}
-                className={`bg-white rounded-xl border p-3 min-h-[220px] flex flex-col ${isToday ? 'border-orchid-400 ring-1 ring-orchid-300' : 'border-slate-200'}`}
-              >
-                <div className={`text-xs font-semibold mb-1 ${isToday ? 'text-orchid-600' : 'text-slate-400'}`}>
-                  {format(day, 'EEE')}
-                </div>
-                <div className={`text-base font-bold mb-2 ${isToday ? 'text-orchid-700' : 'text-slate-700'}`}>
-                  {format(day, 'd')}
-                </div>
-                <div className="flex-1 space-y-1.5">
-                  {dayShifts.length === 0 && (
-                    <p className="text-[11px] text-slate-300 italic">No shifts</p>
-                  )}
-                  {dayShifts.map(s => (
-                    <ShiftCard
-                      key={s.id}
-                      shift={s}
-                      isAdmin={isManager}
-                      isOwn={s.user_id === user?.id}
-                      onEdit={() => setShiftModal({ mode: 'edit', shift: s })}
-                      onDelete={() => deleteShift(s)}
-                      onRequestChange={() => setShiftModal({ mode: 'request', shift: s, kind: 'update' })}
-                      onRequestDelete={() => setShiftModal({ mode: 'request', shift: s, kind: 'delete' })}
-                    />
-                  ))}
-                </div>
-                <div className="mt-2 space-y-0.5">
-                  {isManager ? (
-                    <button
-                      onClick={() => setShiftModal({ mode: 'create', day })}
-                      className="w-full text-xs text-orchid-700 hover:text-orchid-900 hover:bg-orchid-50 rounded px-2 py-1 flex items-center justify-center gap-1"
+        <div className="overflow-x-auto rounded-xl border border-slate-200 bg-white shadow-sm">
+          <table className="border-separate border-spacing-0 w-full min-w-[640px]">
+            <thead>
+              <tr>
+                <th className="sticky left-0 z-20 bg-slate-50 border-b border-r border-slate-200 px-4 py-3 text-left text-xs font-semibold text-slate-500 uppercase tracking-wide min-w-[160px]">
+                  Member
+                </th>
+                {weekDays.map(day => {
+                  const key     = format(day, 'yyyy-MM-dd')
+                  const isToday = key === today
+                  return (
+                    <th
+                      key={key}
+                      className={`border-b border-r border-slate-200 px-2 py-3 text-center text-xs font-semibold min-w-[100px] last:border-r-0 ${isToday ? 'text-orchid-600 bg-orchid-50' : 'text-slate-500 bg-slate-50'}`}
                     >
-                      <Plus size={11} /> Add shift
-                    </button>
-                  ) : (
-                    <>
-                      <button
-                        onClick={() => setShiftModal({ mode: 'request', day, kind: 'create' })}
-                        className="w-full text-xs text-slate-500 hover:text-orchid-700 hover:bg-orchid-50 rounded px-2 py-1 flex items-center justify-center gap-1 transition-colors"
+                      <div>{format(day, 'EEE')}</div>
+                      <div className={`text-base font-bold mt-0.5 ${isToday ? 'text-orchid-700' : 'text-slate-700'}`}>
+                        {format(day, 'd')}
+                      </div>
+                    </th>
+                  )
+                })}
+              </tr>
+            </thead>
+            <tbody>
+              {roleGroups.length === 0 && (
+                <tr>
+                  <td colSpan={8} className="px-4 py-12 text-center text-sm text-slate-400">
+                    No team members found
+                  </td>
+                </tr>
+              )}
+              {roleGroups.map((row, i) => {
+                if (row.type === 'separator') {
+                  return (
+                    <tr key={`sep-${row.role}`}>
+                      <td
+                        colSpan={8}
+                        className="px-4 py-1.5 text-[10px] font-bold uppercase tracking-widest text-slate-400 border-b border-slate-200 bg-slate-50"
                       >
-                        <Plus size={11} /> Request shift
-                      </button>
-                      <button
-                        onClick={() => setShiftModal({ mode: 'request', day, kind: 'day_off' })}
-                        className="w-full text-xs text-slate-500 hover:text-amber-700 hover:bg-amber-50 rounded px-2 py-1 flex items-center justify-center gap-1 transition-colors"
-                      >
-                        <Moon size={11} /> Request day off
-                      </button>
-                    </>
-                  )}
-                </div>
-              </div>
-            )
-          })}
+                        {row.label}
+                      </td>
+                    </tr>
+                  )
+                }
+
+                const m          = row.member
+                const isLastRow  = i === roleGroups.length - 1
+                const borderB    = !isLastRow ? 'border-b border-slate-100' : ''
+
+                return (
+                  <tr key={m.id} className="group/row">
+                    <td className={`sticky left-0 z-10 bg-white px-4 py-0 border-r border-slate-200 text-sm font-medium text-slate-700 whitespace-nowrap ${borderB}`}
+                      style={{ minHeight: 48 }}>
+                      <div className="flex items-center min-h-[48px]">
+                        {m.full_name || m.email}
+                      </div>
+                    </td>
+                    {weekDays.map((day, di) => {
+                      const dateStr = format(day, 'yyyy-MM-dd')
+                      const content = cellMap[m.id]?.[dateStr] ?? ''
+                      const isLast  = di === 6
+                      return (
+                        <td
+                          key={dateStr}
+                          className={`p-0 ${borderB} ${!isLast ? 'border-r border-slate-200' : ''}`}
+                        >
+                          <ScheduleCell
+                            content={content}
+                            isManager={isManager}
+                            onSave={newContent => saveCell(m.id, dateStr, newContent)}
+                          />
+                        </td>
+                      )
+                    })}
+                  </tr>
+                )
+              })}
+            </tbody>
+          </table>
         </div>
       )}
 
-      {/* Manager+: inline pending requests panel */}
       {isManager && adminRequests.length > 0 && (
         <div className="mt-6">
           <h2 className="text-base font-semibold text-slate-700 mb-3">
@@ -205,7 +244,6 @@ export default function Calendar() {
         </div>
       )}
 
-      {/* Members: full request history with status badges */}
       {!isManager && memberRequests.length > 0 && (
         <div className="mt-6">
           <h2 className="text-base font-semibold text-slate-700 mb-3">My requests</h2>
@@ -230,62 +268,75 @@ export default function Calendar() {
   )
 }
 
-// ─── ShiftCard ────────────────────────────────────────────────────────────────
+// ─── ScheduleCell ─────────────────────────────────────────────────────────────
 
-function ShiftCard({ shift, isAdmin, isOwn, onEdit, onDelete, onRequestChange, onRequestDelete }) {
-  const name = shift.user?.full_name || shift.user?.email || 'Unknown'
-  const initials = name.split(/[\s@.]+/).filter(Boolean).slice(0, 2).map(p => p[0]).join('').toUpperCase()
-  const canModify = isAdmin || isOwn
+function ScheduleCell({ content, isManager, onSave }) {
+  const [editing, setEditing] = useState(false)
+  const [draft, setDraft]     = useState('')
+  const inputRef              = useRef(null)
 
-  if (shift.is_day_off) {
+  useEffect(() => {
+    if (editing) inputRef.current?.focus()
+  }, [editing])
+
+  function startEdit() {
+    if (!isManager) return
+    setDraft(content)
+    setEditing(true)
+  }
+
+  function commit() {
+    setEditing(false)
+    if (draft.trim() !== content.trim()) onSave(draft)
+  }
+
+  function cancel() {
+    setEditing(false)
+    setDraft('')
+  }
+
+  const isOff = content.toLowerCase() === 'off'
+  const cellBg    = isOff ? 'bg-red-50'     : content ? 'bg-emerald-50' : 'bg-white'
+  const textColor = isOff ? 'text-red-700 font-semibold' : content ? 'text-emerald-800' : 'text-slate-300'
+
+  if (editing) {
     return (
-      <div className="group bg-amber-50 border border-amber-200 rounded-md p-2 text-xs">
-        <div className="flex items-center gap-1.5">
-          <div className="w-5 h-5 rounded-full bg-amber-200 text-amber-800 flex items-center justify-center text-[9px] font-bold shrink-0">
-            {initials || '?'}
-          </div>
-          <span className="font-medium text-slate-800 truncate">{name}</span>
+      <div className="relative w-full min-h-[48px]">
+        <input
+          ref={inputRef}
+          value={draft}
+          onChange={e => setDraft(e.target.value)}
+          onKeyDown={e => {
+            if (e.key === 'Enter')  { e.preventDefault(); commit() }
+            if (e.key === 'Escape') cancel()
+          }}
+          onBlur={commit}
+          className="w-full min-h-[48px] px-2 py-1.5 text-xs text-slate-800 bg-white border-2 border-orchid-400 outline-none"
+        />
+        <div className="absolute top-0.5 right-0.5 flex gap-0.5 z-10">
+          <button
+            onMouseDown={e => { e.preventDefault(); setDraft('OFF') }}
+            className="text-[9px] px-1 py-0.5 rounded bg-red-100 text-red-700 font-bold hover:bg-red-200 leading-none"
+          >OFF</button>
+          <button
+            onMouseDown={e => { e.preventDefault(); setDraft('FULL') }}
+            className="text-[9px] px-1 py-0.5 rounded bg-emerald-100 text-emerald-700 font-bold hover:bg-emerald-200 leading-none"
+          >FULL</button>
         </div>
-        <div className="mt-0.5 flex items-center gap-1 text-amber-700 font-medium">
-          <Moon size={10} />
-          Day off
-        </div>
-        {isAdmin && (
-          <div className="opacity-0 group-hover:opacity-100 flex gap-2 mt-1 transition-opacity">
-            <button onClick={onDelete} className="text-[10px] text-red-500 hover:underline">Remove</button>
-          </div>
-        )}
       </div>
     )
   }
 
-  const start = format(parseISO(shift.starts_at), 'HH:mm')
-  const end   = format(parseISO(shift.ends_at),   'HH:mm')
-
   return (
-    <div className="group bg-orchid-50/60 border border-orchid-100 rounded-md p-2 text-xs">
-      <div className="flex items-center gap-1.5">
-        <div className="w-5 h-5 rounded-full bg-orchid-200 text-orchid-800 flex items-center justify-center text-[9px] font-bold shrink-0">
-          {initials || '?'}
-        </div>
-        <span className="font-medium text-slate-800 truncate">{name}</span>
-      </div>
-      <div className="mt-0.5 text-slate-500 font-mono tabular-nums">{start}–{end}</div>
-      {shift.notes && <p className="mt-0.5 text-slate-500 truncate" title={shift.notes}>{shift.notes}</p>}
-      {canModify && (
-        <div className="opacity-0 group-hover:opacity-100 flex flex-wrap gap-x-2 gap-y-0.5 mt-1 transition-opacity">
-          {isAdmin ? (
-            <>
-              <button onClick={onEdit}   className="text-[10px] text-orchid-600 hover:underline">Edit</button>
-              <button onClick={onDelete} className="text-[10px] text-red-500 hover:underline">Delete</button>
-            </>
-          ) : (
-            <>
-              <button onClick={onRequestChange} className="text-[10px] text-orchid-600 hover:underline">Request change</button>
-              <button onClick={onRequestDelete} className="text-[10px] text-red-500 hover:underline">Request delete</button>
-            </>
-          )}
-        </div>
+    <div
+      onClick={startEdit}
+      className={`group/cell relative w-full min-h-[48px] px-2 py-1.5 flex items-center ${cellBg} ${isManager ? 'cursor-text' : ''}`}
+    >
+      <span className={`text-xs leading-snug ${textColor}`}>{content}</span>
+      {isManager && !content && (
+        <span className="absolute inset-0 flex items-center justify-center opacity-0 group-hover/cell:opacity-100 text-[10px] text-slate-300 transition-opacity pointer-events-none select-none">
+          click to edit
+        </span>
       )}
     </div>
   )
@@ -504,24 +555,20 @@ function ShiftModal({ mode, shift, day, kind, members, currentUser, isAdmin, onC
             </div>
           ) : (
             <div className="text-xs text-slate-500 bg-slate-50 px-3 py-2 rounded">
-              {kind === 'day_off' ? 'You are requesting a full day off. An admin will review it.'
+              {kind === 'day_off'  ? 'You are requesting a full day off. An admin will review it.'
                : kind === 'create' ? 'You are proposing a brand-new shift for yourself. An admin will review it.'
                : kind === 'update' ? 'Propose new times for your shift. An admin will review.'
                :                     'You are requesting that this shift be removed. An admin will confirm.'}
             </div>
           )}
 
-          {/* Day-off: date range picker */}
           {isDayOff && (
             <div className="grid grid-cols-2 gap-3">
               <div>
                 <label className="block text-xs font-medium text-slate-600 mb-1.5">Start date</label>
                 <input
                   type="date" value={date}
-                  onChange={e => {
-                    setDate(e.target.value)
-                    if (dayOffEnd < e.target.value) setDayOffEnd(e.target.value)
-                  }}
+                  onChange={e => { setDate(e.target.value); if (dayOffEnd < e.target.value) setDayOffEnd(e.target.value) }}
                   className="w-full border border-slate-200 rounded-lg px-3 py-2 text-sm outline-none focus:ring-2 focus:ring-orchid-500"
                 />
               </div>
@@ -536,7 +583,6 @@ function ShiftModal({ mode, shift, day, kind, members, currentUser, isAdmin, onC
             </div>
           )}
 
-          {/* Regular shift form */}
           {!isDeleteRequest && !isDayOff && (
             <>
               <div>
@@ -573,7 +619,6 @@ function ShiftModal({ mode, shift, day, kind, members, currentUser, isAdmin, onC
             </>
           )}
 
-          {/* Reason field — for all request types (not admin direct-add) */}
           {!isAdminPath && (
             <div>
               <label className="block text-xs font-medium text-slate-600 mb-1.5">Reason (optional)</label>

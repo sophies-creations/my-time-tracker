@@ -16,15 +16,30 @@ export async function applyShiftRequest(req, adminUserId) {
     const days  = eachDayOfInterval({ start, end })
     for (const d of days) {
       const dateStr = format(d, 'yyyy-MM-dd')
-      const { data, error } = await supabase.from('shifts').insert({
+
+      // Write the day-off shift row.
+      const { data: shiftData, error: shiftError } = await supabase.from('shifts').insert({
         user_id:    req.user_id,
         starts_at:  new Date(dateStr + 'T00:00:00').toISOString(),
         ends_at:    new Date(dateStr + 'T23:59:59').toISOString(),
         is_day_off: true,
         created_by: adminUserId,
       }).select()
-      if (error) return error
-      if (!data || data.length === 0) return silentBlock('shifts')
+      if (shiftError) return shiftError
+      if (!shiftData || shiftData.length === 0) return silentBlock('shifts')
+
+      // Mirror "OFF" onto the spreadsheet grid so it shows red automatically.
+      const { data: cellData, error: cellError } = await supabase
+        .from('schedule_cells')
+        .upsert(
+          { user_id: req.user_id, work_date: dateStr, content: 'OFF' },
+          { onConflict: 'user_id,work_date' }
+        )
+        .select()
+      if (cellError) return cellError
+      if (!cellData || cellData.length === 0) return new Error(
+        `schedule_cells "OFF" write was blocked for ${dateStr} — check RLS policies.`
+      )
     }
     return null
   }
