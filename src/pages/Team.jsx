@@ -261,11 +261,11 @@ export default function Team() {
                     </button>
                   </div>
                 ) : (
-                  <div className="flex items-center gap-1.5 group/name">
-                    <p className={`text-sm font-medium truncate ${isHidden ? 'line-through text-slate-400' : 'text-slate-800'}`}>
+                  <div className="flex items-center flex-wrap gap-x-2 gap-y-1 group/name">
+                    <span className={`text-sm font-medium ${isHidden ? 'line-through text-slate-400' : 'text-slate-800'}`}>
                       {member.full_name || <span className="italic text-slate-400 font-normal">Unnamed</span>}
                       {!member.active && <span className="ml-2 text-xs text-red-500 font-normal">Deactivated</span>}
-                    </p>
+                    </span>
                     {isAdmin && !isMe && (
                       <button
                         onClick={() => setEditingName({ memberId: member.id, value: member.full_name ?? '' })}
@@ -275,19 +275,21 @@ export default function Team() {
                         <Pencil size={11} />
                       </button>
                     )}
-                  </div>
-                )}
-                <p className="text-xs text-slate-400 truncate">{member.email}</p>
-                {member.languages?.length > 0 && (
-                  <div className="flex flex-wrap gap-1 mt-1">
-                    {member.languages.map(lang => (
-                      <span
-                        key={lang}
-                        className="text-[10px] font-medium px-1.5 py-0.5 rounded-full bg-orchid-50 text-orchid-700 border border-orchid-100"
-                      >
-                        {lang}
-                      </span>
-                    ))}
+                    <span className="text-slate-300 select-none">–</span>
+                    <span className="text-sm text-slate-400">{member.email}</span>
+                    {member.languages?.length > 0 && (
+                      <>
+                        <span className="text-slate-300 select-none">–</span>
+                        {member.languages.map(lang => (
+                          <span
+                            key={lang}
+                            className="text-[10px] font-medium px-1.5 py-0.5 rounded-full bg-orchid-50 text-orchid-700 border border-orchid-100"
+                          >
+                            {lang}
+                          </span>
+                        ))}
+                      </>
+                    )}
                   </div>
                 )}
               </div>
