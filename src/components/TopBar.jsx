@@ -1,8 +1,9 @@
 import { useState, useRef, useEffect } from 'react'
 import { useNavigate, useLocation } from 'react-router-dom'
-import { ChevronDown, LogOut, User, Shield, Plus, Clock } from 'lucide-react'
+import { ChevronDown, LogOut, User, Shield, Plus, Clock, Sun, Moon } from 'lucide-react'
 import { supabase } from '../lib/supabase'
 import { useAuth } from '../contexts/AuthContext'
+import { useTheme } from '../contexts/ThemeContext'
 import { formatDuration } from '../utils/formatters'
 import NotificationBell from './NotificationBell'
 
@@ -22,6 +23,7 @@ function initials(profile) {
 
 export default function TopBar() {
   const { user, profile, signOut } = useAuth()
+  const { theme, toggleTheme } = useTheme()
   const navigate = useNavigate()
   const location = useLocation()
   const isTrackerPage = location.pathname.startsWith('/tracker')
@@ -38,7 +40,6 @@ export default function TopBar() {
     return () => document.removeEventListener('mousedown', onDown)
   }, [])
 
-  // Initial check on mount for an already-running entry.
   useEffect(() => {
     if (!user) return
     let cancelled = false
@@ -56,7 +57,6 @@ export default function TopBar() {
     return () => { cancelled = true }
   }, [user])
 
-  // Stay in sync with TimerWidget state broadcasts.
   useEffect(() => {
     function onState(e) {
       const { running, startTime } = e.detail ?? {}
@@ -72,7 +72,6 @@ export default function TopBar() {
     return () => window.removeEventListener('timer:state', onState)
   }, [])
 
-  // Tick elapsed once per second while a timer is running.
   useEffect(() => {
     if (!timerStartTime) return
     const id = setInterval(() => {
@@ -89,10 +88,18 @@ export default function TopBar() {
   const role = profile?.role ?? 'member'
 
   return (
-    <header className="relative z-30 h-12 bg-white border-b border-slate-200 flex items-center justify-end px-4 flex-shrink-0 gap-3">
+    <header className="relative z-30 h-12 bg-surface border-b border-slate-200 flex items-center justify-end px-4 flex-shrink-0 gap-3">
       <NotificationBell />
 
-      {/* Minimal running indicator — only on non-tracker pages, links back to tracker */}
+      {/* Theme toggle */}
+      <button
+        onClick={toggleTheme}
+        title={theme === 'dark' ? 'Switch to light mode' : 'Switch to dark mode'}
+        className="p-1.5 rounded-lg text-slate-500 hover:text-slate-700 hover:bg-slate-100 transition-colors"
+      >
+        {theme === 'dark' ? <Sun size={16} /> : <Moon size={16} />}
+      </button>
+
       {timerStartTime && !isTrackerPage && (
         <button
           onClick={() => navigate('/tracker')}
@@ -113,22 +120,45 @@ export default function TopBar() {
           onClick={() => setOpen(v => !v)}
           className="flex items-center gap-2 pl-1 pr-2 py-1 rounded-full hover:bg-slate-100 transition-colors"
         >
-          <div className="w-7 h-7 rounded-full bg-orchid-600 text-white flex items-center justify-center text-xs font-bold uppercase">
-            {initials(profile)}
-          </div>
+          {profile?.avatar_url ? (
+            <img
+              src={profile.avatar_url}
+              alt="avatar"
+              className="w-7 h-7 rounded-full object-cover"
+            />
+          ) : (
+            <div className="w-7 h-7 rounded-full bg-orchid-600 text-white flex items-center justify-center text-xs font-bold uppercase">
+              {initials(profile)}
+            </div>
+          )}
           <ChevronDown size={13} className="text-slate-400" />
         </button>
 
         {open && (
-          <div className="absolute right-0 top-full mt-2 w-60 bg-white border border-slate-200 rounded-xl shadow-lg z-50 overflow-hidden">
-            <div className="px-4 py-3 border-b border-slate-100">
-              <p className="text-sm font-semibold text-slate-800 truncate">
-                {profile?.full_name || profile?.email}
-              </p>
-              {profile?.full_name && (
-                <p className="text-xs text-slate-500 truncate">{profile.email}</p>
-              )}
-              <span className={`inline-flex items-center gap-1 mt-2 text-[10px] px-2 py-0.5 rounded-full font-semibold uppercase tracking-wide ${ROLE_STYLES[role] ?? ROLE_STYLES.member}`}>
+          <div className="absolute right-0 top-full mt-2 w-60 bg-surface border border-slate-200 rounded-xl shadow-lg z-50 overflow-hidden">
+            <div className="px-4 py-3 border-b border-slate-200">
+              <div className="flex items-center gap-3 mb-2">
+                {profile?.avatar_url ? (
+                  <img
+                    src={profile.avatar_url}
+                    alt="avatar"
+                    className="w-9 h-9 rounded-full object-cover flex-shrink-0"
+                  />
+                ) : (
+                  <div className="w-9 h-9 rounded-full bg-orchid-600 text-white flex items-center justify-center text-sm font-bold uppercase flex-shrink-0">
+                    {initials(profile)}
+                  </div>
+                )}
+                <div className="min-w-0">
+                  <p className="text-sm font-semibold text-slate-800 truncate">
+                    {profile?.full_name || profile?.email}
+                  </p>
+                  {profile?.full_name && (
+                    <p className="text-xs text-slate-500 truncate">{profile.email}</p>
+                  )}
+                </div>
+              </div>
+              <span className={`inline-flex items-center gap-1 text-[10px] px-2 py-0.5 rounded-full font-semibold uppercase tracking-wide ${ROLE_STYLES[role] ?? ROLE_STYLES.member}`}>
                 {role === 'admin' && <Shield size={9} />}
                 {role}
               </span>
@@ -136,21 +166,21 @@ export default function TopBar() {
             <div className="py-1">
               <button
                 onClick={openAddTime}
-                className="w-full flex items-center gap-2.5 px-4 py-2 text-sm text-slate-700 hover:bg-slate-50 text-left"
+                className="w-full flex items-center gap-2.5 px-4 py-2 text-sm text-slate-700 hover:bg-slate-100 text-left"
               >
                 <Plus size={14} />
                 Add time
               </button>
               <button
                 onClick={() => { setOpen(false); navigate('/profile') }}
-                className="w-full flex items-center gap-2.5 px-4 py-2 text-sm text-slate-700 hover:bg-slate-50 text-left"
+                className="w-full flex items-center gap-2.5 px-4 py-2 text-sm text-slate-700 hover:bg-slate-100 text-left"
               >
                 <User size={14} />
                 Profile settings
               </button>
               <button
                 onClick={signOut}
-                className="w-full flex items-center gap-2.5 px-4 py-2 text-sm text-slate-700 hover:bg-slate-50 text-left"
+                className="w-full flex items-center gap-2.5 px-4 py-2 text-sm text-slate-700 hover:bg-slate-100 text-left"
               >
                 <LogOut size={14} />
                 Sign out

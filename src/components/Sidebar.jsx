@@ -38,20 +38,18 @@ export default function Sidebar() {
 
   return (
     <aside
-      className={`${collapsed ? 'w-14' : 'w-56'} flex flex-col flex-shrink-0 transition-[width] duration-200`}
-      style={{ backgroundColor: '#1e1a2e' }}
+      className={`${collapsed ? 'w-14' : 'w-56'} flex flex-col flex-shrink-0 transition-[width] duration-200 bg-sidebar`}
     >
       {/* Logo row */}
       <div
-        className={`${collapsed ? 'px-2 justify-center' : 'px-3 justify-between'} py-4 flex items-center`}
-        style={{ borderBottom: '1px solid #2d2647' }}
+        className={`${collapsed ? 'px-2 justify-center' : 'px-3 justify-between'} py-4 flex items-center border-b border-sidebar-border`}
       >
         {collapsed ? (
           <button
             onClick={() => setCollapsed(c => !c)}
             title="Expand sidebar"
             aria-label="Expand sidebar"
-            className="w-8 h-8 rounded-lg flex items-center justify-center text-slate-300 hover:bg-white/10 hover:text-white transition-colors"
+            className="w-8 h-8 rounded-lg flex items-center justify-center text-white/60 hover:bg-white/10 hover:text-white transition-colors"
           >
             <Menu size={16} />
           </button>
@@ -67,7 +65,7 @@ export default function Sidebar() {
               onClick={() => setCollapsed(c => !c)}
               title="Collapse sidebar"
               aria-label="Collapse sidebar"
-              className="w-8 h-8 rounded-lg flex items-center justify-center text-slate-300 hover:bg-white/10 hover:text-white transition-colors flex-shrink-0"
+              className="w-8 h-8 rounded-lg flex items-center justify-center text-white/60 hover:bg-white/10 hover:text-white transition-colors flex-shrink-0"
             >
               <Menu size={16} />
             </button>
@@ -86,7 +84,7 @@ export default function Sidebar() {
               `flex items-center ${collapsed ? 'justify-center' : 'gap-3'} px-3 py-2.5 rounded-lg text-sm font-medium transition-colors ${
                 isActive
                   ? 'bg-orchid-600 text-white'
-                  : 'text-slate-400 hover:bg-white/8 hover:text-white'
+                  : 'text-white/65 hover:bg-white/10 hover:text-white'
               }`
             }
           >
