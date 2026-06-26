@@ -52,7 +52,7 @@ export default function ProjectModal({ project, onClose, onSaved }) {
 
   return (
     <div className="fixed inset-0 bg-black/50 flex items-center justify-center z-50 p-4">
-      <div className="bg-white rounded-2xl shadow-2xl w-full max-w-sm">
+      <div className="bg-surface rounded-2xl shadow-2xl w-full max-w-sm">
         <div className="flex items-center justify-between px-6 py-4 border-b border-slate-100">
           <h2 className="text-base font-semibold text-slate-800">
             {project ? 'Edit project' : 'New project'}
@@ -128,7 +128,7 @@ export default function ProjectModal({ project, onClose, onSaved }) {
                 className={`flex-1 flex items-center justify-center gap-1.5 px-3 py-2 text-sm font-medium transition-colors ${
                   visibility === 'public'
                     ? 'bg-orchid-600 text-white'
-                    : 'bg-white text-slate-500 hover:bg-slate-50'
+                    : 'bg-surface text-slate-500 hover:bg-slate-100'
                 }`}
               >
                 <Globe size={13} />
@@ -140,7 +140,7 @@ export default function ProjectModal({ project, onClose, onSaved }) {
                 className={`flex-1 flex items-center justify-center gap-1.5 px-3 py-2 text-sm font-medium transition-colors border-l border-slate-200 ${
                   visibility === 'private'
                     ? 'bg-orchid-600 text-white'
-                    : 'bg-white text-slate-500 hover:bg-slate-50'
+                    : 'bg-surface text-slate-500 hover:bg-slate-100'
                 }`}
               >
                 <Lock size={13} />

@@ -19,7 +19,7 @@ export default function LanguagesPicker({ value, onChange }) {
             className={`px-3 py-1.5 rounded-full text-sm font-medium border transition-colors ${
               selected
                 ? 'bg-orchid-600 text-white border-orchid-600'
-                : 'bg-white text-slate-600 border-slate-200 hover:border-orchid-400 hover:text-orchid-700'
+                : 'bg-surface text-slate-600 border-slate-200 hover:border-orchid-400 hover:text-orchid-700'
             }`}
           >
             {lang}

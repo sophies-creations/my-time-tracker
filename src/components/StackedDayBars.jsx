@@ -194,7 +194,7 @@ function Tooltip({ bucket, anchorRect }) {
   return createPortal(
     <div
       ref={elRef}
-      className="fixed pointer-events-none z-[9999] bg-slate-900 text-white rounded-lg shadow-xl px-3 py-2 w-[16rem]"
+      className="fixed pointer-events-none z-[9999] bg-[#1a1221] text-white rounded-lg shadow-xl px-3 py-2 w-[16rem]"
       style={{
         left: pos ? pos.left : anchorRect.left,
         top: pos ? pos.top : anchorRect.top,

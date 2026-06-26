@@ -129,7 +129,7 @@ function DonutChart({ segments, total, size = 168 }) {
   if (!total) {
     return (
       <svg viewBox="0 0 100 100" style={{ width: size, height: size }}>
-        <circle cx="50" cy="50" r={R} fill="none" stroke="#f1f5f9" strokeWidth="14" />
+        <circle cx="50" cy="50" r={R} fill="none" stroke="var(--color-slate-200)" strokeWidth="14" />
         <text x="50" y="54" textAnchor="middle" fill="#94a3b8" fontSize="8">No data</text>
       </svg>
     )
@@ -159,7 +159,7 @@ function DonutChart({ segments, total, size = 168 }) {
       </svg>
       {hover && (
         <div
-          className="pointer-events-none absolute z-10 whitespace-nowrap bg-slate-800 text-white text-xs px-2.5 py-1.5 rounded-lg shadow-lg"
+          className="pointer-events-none absolute z-10 whitespace-nowrap bg-[#1a1221] text-white text-xs px-2.5 py-1.5 rounded-lg shadow-lg"
           style={{ left: hover.x + 12, top: hover.y + 12 }}
         >
           <span className="font-semibold">{hover.label}</span>
@@ -420,7 +420,7 @@ export default function Reports() {
   const statusLabel = statusOptions.find(o => o.value === stagedStatus)?.label ?? ''
 
   const sharedFilterRow = (
-    <div className="bg-white rounded-xl border border-slate-200 p-3 mb-5 flex flex-wrap items-center gap-2">
+    <div className="bg-surface rounded-xl border border-slate-200 p-3 mb-5 flex flex-wrap items-center gap-2">
       {isManager && (
         <FilterPill
           label="Team / User"
@@ -526,7 +526,7 @@ export default function Reports() {
   const showTertiary         = secondaryBy !== 'none'
 
   const groupByRow = (
-    <div className="bg-white rounded-xl border border-slate-200 p-3 mb-5 flex flex-wrap items-center gap-2">
+    <div className="bg-surface rounded-xl border border-slate-200 p-3 mb-5 flex flex-wrap items-center gap-2">
       <span className="text-sm font-semibold text-slate-700 mr-0.5">Group by:</span>
       <FilterPill bare valueLabel={primaryLabel} hasValue>
         {close => (
@@ -579,7 +579,7 @@ export default function Reports() {
 
   // Detailed tab reuses the multi-select pill row plus a one-pill Group by.
   const detailedGroupByRow = (
-    <div className="bg-white rounded-xl border border-slate-200 p-3 mb-5 flex flex-wrap items-center gap-2">
+    <div className="bg-surface rounded-xl border border-slate-200 p-3 mb-5 flex flex-wrap items-center gap-2">
       <span className="text-sm font-semibold text-slate-700 mr-0.5">Group by:</span>
       <FilterPill bare valueLabel={primaryLabel} hasValue>
         {close => (
@@ -626,7 +626,7 @@ export default function Reports() {
       <div className="flex gap-1 mb-5 bg-slate-100 rounded-xl p-1 w-fit">
         {['summary', 'detailed', 'weekly'].map(t => (
           <button key={t} onClick={() => setTab(t)}
-            className={`px-4 py-1.5 rounded-lg text-sm font-medium capitalize transition-colors ${tab === t ? 'bg-white text-slate-800 shadow-sm' : 'text-slate-500 hover:text-slate-700'}`}
+            className={`px-4 py-1.5 rounded-lg text-sm font-medium capitalize transition-colors ${tab === t ? 'bg-surface text-slate-800 shadow-sm' : 'text-slate-500 hover:text-slate-700'}`}
           >{t}</button>
         ))}
       </div>
@@ -649,14 +649,14 @@ export default function Reports() {
                     {formatDuration(totalSecs)}
                   </span>
                 </div>
-                <div className="bg-white rounded-b-xl p-5">
+                <div className="bg-surface rounded-b-xl p-5">
                   <StackedDayBars buckets={chartBuckets} labels="auto" />
                 </div>
               </div>
 
               {groupByRow}
 
-              <div className="bg-white rounded-xl border border-slate-200 grid grid-cols-1 md:grid-cols-5 md:divide-x divide-slate-200 overflow-hidden">
+              <div className="bg-surface rounded-xl border border-slate-200 grid grid-cols-1 md:grid-cols-5 md:divide-x divide-slate-200 overflow-hidden">
                 <div className="md:col-span-3">
                   <div className="flex items-center justify-between px-5 py-3 border-b border-slate-100">
                     <h3 className="text-sm font-semibold text-slate-700">
@@ -780,7 +780,7 @@ export default function Reports() {
                 {detailed.map(g => {
                   const isOpen = expanded.has(g.key)
                   return (
-                    <div key={g.key} className="bg-white rounded-xl border border-slate-200 overflow-hidden shadow-sm">
+                    <div key={g.key} className="bg-surface rounded-xl border border-slate-200 overflow-hidden shadow-sm">
                       <button
                         onClick={() => toggleGroup(g.key)}
                         className="w-full flex items-center gap-3 px-4 py-3 bg-orchid-50/70 border-b border-orchid-100 hover:bg-orchid-100/60 transition-colors text-left"
@@ -816,7 +816,7 @@ export default function Reports() {
                           </thead>
                           <tbody className="divide-y divide-slate-100">
                             {g.entries.map(entry => (
-                              <tr key={entry.id} className="hover:bg-slate-50 transition-colors">
+                              <tr key={entry.id} className="hover:bg-slate-100 transition-colors">
                                 <td className="px-4 py-2.5">
                                   {entry.project ? (
                                     <span className="flex items-center gap-2">
@@ -862,7 +862,7 @@ export default function Reports() {
                   )
                 })}
                 {!detailed.length && (
-                  <div className="bg-white rounded-xl border border-slate-200 px-4 py-14 text-center text-slate-400">
+                  <div className="bg-surface rounded-xl border border-slate-200 px-4 py-14 text-center text-slate-400">
                     No entries for this period
                   </div>
                 )}
@@ -890,7 +890,7 @@ export default function Reports() {
                   const total = dayEntries.reduce((s, e) => s + (e.duration ?? 0), 0)
                   const isToday = key === format(new Date(), 'yyyy-MM-dd')
                   return (
-                    <div key={key} className={`bg-white rounded-xl border p-3 min-h-[120px] ${isToday ? 'border-orchid-400 ring-1 ring-orchid-300' : 'border-slate-200'}`}>
+                    <div key={key} className={`bg-surface rounded-xl border p-3 min-h-[120px] ${isToday ? 'border-orchid-400 ring-1 ring-orchid-300' : 'border-slate-200'}`}>
                       <div className={`text-xs font-semibold mb-1 ${isToday ? 'text-orchid-600' : 'text-slate-400'}`}>
                         {format(day, 'EEE')}
                       </div>
@@ -918,7 +918,7 @@ export default function Reports() {
                 })}
               </div>
 
-              <div className="bg-white rounded-xl border border-slate-200 overflow-hidden">
+              <div className="bg-surface rounded-xl border border-slate-200 overflow-hidden">
                 <div className="flex items-center justify-between px-5 py-3 border-b border-slate-100">
                   <h3 className="text-sm font-semibold text-slate-700">Time by project (this week)</h3>
                   <span className="text-xs font-mono text-slate-500">
@@ -970,7 +970,7 @@ function GroupRow({ level, label, color, seconds, pct, hasChildren, expanded, on
   return (
     <Wrapper
       onClick={hasChildren ? onToggle : undefined}
-      className={`w-full flex items-center gap-3 ${indentClass} pr-5 py-2.5 text-left ${hasChildren ? 'hover:bg-slate-50' : ''}`}
+      className={`w-full flex items-center gap-3 ${indentClass} pr-5 py-2.5 text-left ${hasChildren ? 'hover:bg-slate-100' : ''}`}
     >
       {hasChildren ? (
         <ChevronDown

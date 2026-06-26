@@ -32,11 +32,11 @@ export default function FilterPill({ label, valueLabel = '', hasValue, onClear, 
         type="button"
         onClick={() => setOpen(v => !v)}
         className={bare
-          ? 'flex items-center gap-1.5 px-2.5 h-8 rounded-lg border border-slate-200 bg-white text-sm text-slate-700 hover:border-slate-300 hover:bg-slate-50 transition-colors'
+          ? 'flex items-center gap-1.5 px-2.5 h-8 rounded-lg border border-slate-200 bg-surface text-sm text-slate-700 hover:border-slate-300 hover:bg-slate-100 transition-colors'
           : `flex items-center gap-1.5 px-3 h-9 rounded-full border text-xs transition-colors ${
               hasValue
                 ? 'border-orchid-300 bg-orchid-50 text-orchid-800'
-                : 'border-slate-200 bg-white text-slate-600 hover:border-slate-300 hover:text-slate-800'
+                : 'border-slate-200 bg-surface text-slate-600 hover:border-slate-300 hover:text-slate-800'
             }`
         }
       >
@@ -86,7 +86,7 @@ export default function FilterPill({ label, valueLabel = '', hasValue, onClear, 
         )}
       </button>
       {open && (
-        <div className={`absolute top-full mt-1 z-30 bg-white border border-slate-200 rounded-xl shadow-lg overflow-hidden ${width} ${align === 'right' ? 'right-0' : 'left-0'}`}>
+        <div className={`absolute top-full mt-1 z-30 bg-surface border border-slate-200 rounded-xl shadow-lg overflow-hidden ${width} ${align === 'right' ? 'right-0' : 'left-0'}`}>
           {content}
         </div>
       )}
@@ -184,7 +184,7 @@ export function SelectableList({ options, groups, value, onChange, multi = false
               type="button"
               onClick={() => setView(o.key)}
               className={`px-2 py-0.5 rounded-full text-[11px] font-medium transition-colors ${
-                view === o.key ? 'bg-orchid-100 text-orchid-700' : 'text-slate-400 hover:text-slate-600 hover:bg-slate-50'
+                view === o.key ? 'bg-orchid-100 text-orchid-700' : 'text-slate-400 hover:text-slate-600 hover:bg-slate-100'
               }`}
             >{o.label}</button>
           ))}
@@ -204,7 +204,7 @@ export function SelectableList({ options, groups, value, onChange, multi = false
                 <button
                   key={o.value}
                   onClick={() => pick(o.value)}
-                  className={`w-full text-left text-sm px-3 py-1.5 flex items-center gap-2 hover:bg-slate-50 ${
+                  className={`w-full text-left text-sm px-3 py-1.5 flex items-center gap-2 hover:bg-slate-100 ${
                     !multi && selected ? 'text-orchid-700 bg-orchid-50/60 font-medium' : 'text-slate-700'
                   }`}
                 >

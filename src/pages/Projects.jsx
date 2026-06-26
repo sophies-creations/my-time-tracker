@@ -157,7 +157,7 @@ export default function Projects() {
   function Row({ project }) {
     const isFav = favoriteIds.has(project.id)
     return (
-      <tr className={`hover:bg-slate-50 transition-colors ${project.archived ? 'opacity-55' : ''}`}>
+      <tr className={`hover:bg-slate-100 transition-colors ${project.archived ? 'opacity-55' : ''}`}>
         <td className="px-5 py-3.5">
           <div className="flex items-center gap-2.5">
             <button
@@ -221,7 +221,7 @@ export default function Projects() {
 
   function Table({ rows }) {
     return (
-      <div className="bg-white rounded-xl border border-slate-200 overflow-hidden">
+      <div className="bg-surface rounded-xl border border-slate-200 overflow-hidden">
           <table className="w-full text-sm">
             <thead>
               <tr className="bg-slate-50 border-b border-slate-100">
@@ -260,7 +260,7 @@ export default function Projects() {
       </div>
 
       {/* Search + filter bar */}
-      <div className="bg-white rounded-xl border border-slate-200 p-3 mb-5 flex flex-wrap items-center gap-2">
+      <div className="bg-surface rounded-xl border border-slate-200 p-3 mb-5 flex flex-wrap items-center gap-2">
         {/* Live search */}
         <div className="relative">
           <Search size={13} className="absolute left-2.5 top-1/2 -translate-y-1/2 text-slate-400 pointer-events-none" />
@@ -357,7 +357,7 @@ export default function Projects() {
           <div className="w-6 h-6 border-2 border-orchid-600 border-t-transparent rounded-full animate-spin" />
         </div>
       ) : visible.length === 0 ? (
-        <div className="bg-white rounded-xl border border-slate-200 px-4 py-16 text-center text-slate-400">
+        <div className="bg-surface rounded-xl border border-slate-200 px-4 py-16 text-center text-slate-400">
           <p className="font-medium">{emptyMessage}</p>
           {!anyFilterActive && canCreate && (
             <p className="text-sm mt-1">Click "Create new project" to get started</p>

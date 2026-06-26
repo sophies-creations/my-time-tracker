@@ -150,7 +150,7 @@ export default function AdminTimeEntryModal({ entry, onClose, onSaved }) {
 
   return (
     <div className="fixed inset-0 bg-black/50 flex items-center justify-center z-50 p-4">
-      <div className="bg-white rounded-2xl shadow-2xl w-full max-w-md">
+      <div className="bg-surface rounded-2xl shadow-2xl w-full max-w-md">
         <div className="flex items-center justify-between px-6 py-4 border-b border-slate-100">
           <h2 className="text-base font-semibold text-slate-800">
             {entry ? 'Edit entry (admin)' : 'Add entry for agent'}
@@ -225,7 +225,7 @@ export default function AdminTimeEntryModal({ entry, onClose, onSaved }) {
                   type="button"
                   onClick={() => setMode('start-end')}
                   className={`px-2.5 py-1 rounded-md font-medium transition-colors ${
-                    mode === 'start-end' ? 'bg-white text-slate-800 shadow-sm' : 'text-slate-500 hover:text-slate-700'
+                    mode === 'start-end' ? 'bg-surface text-slate-800 shadow-sm' : 'text-slate-500 hover:text-slate-700'
                   }`}
                 >
                   Start / End
@@ -234,7 +234,7 @@ export default function AdminTimeEntryModal({ entry, onClose, onSaved }) {
                   type="button"
                   onClick={() => setMode('total-hours')}
                   className={`px-2.5 py-1 rounded-md font-medium transition-colors ${
-                    mode === 'total-hours' ? 'bg-white text-slate-800 shadow-sm' : 'text-slate-500 hover:text-slate-700'
+                    mode === 'total-hours' ? 'bg-surface text-slate-800 shadow-sm' : 'text-slate-500 hover:text-slate-700'
                   }`}
                 >
                   Total hours

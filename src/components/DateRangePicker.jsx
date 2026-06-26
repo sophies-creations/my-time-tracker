@@ -84,7 +84,7 @@ export default function DateRangePicker({ from, to, onChange, align = 'left' }) 
       <button
         type="button"
         onClick={() => setOpen(v => !v)}
-        className="flex items-center gap-2 border border-slate-200 rounded-lg px-3 py-2 text-sm text-slate-700 bg-white hover:bg-slate-50 transition-colors"
+        className="flex items-center gap-2 border border-slate-200 rounded-lg px-3 py-2 text-sm text-slate-700 bg-surface hover:bg-slate-100 transition-colors"
       >
         <CalendarIcon size={14} className="text-slate-400" />
         <span>{formatRangeLabel(from, to)}</span>
@@ -93,21 +93,21 @@ export default function DateRangePicker({ from, to, onChange, align = 'left' }) 
 
       {open && (
         <div
-          className={`absolute top-full mt-2 z-50 bg-white border border-slate-200 rounded-xl shadow-xl flex ${align === 'right' ? 'right-0' : 'left-0'}`}
+          className={`absolute top-full mt-2 z-50 bg-surface border border-slate-200 rounded-xl shadow-xl flex ${align === 'right' ? 'right-0' : 'left-0'}`}
         >
           <div className="border-r border-slate-100 py-1.5 w-28">
             {PRESETS.map(p => (
               <button
                 key={p.label}
                 onClick={() => applyPreset(p)}
-                className={`w-full text-left px-3 py-1.5 text-xs hover:bg-slate-50 ${activePreset === p.label ? 'text-orchid-700 font-medium bg-orchid-50/40' : 'text-slate-600'}`}
+                className={`w-full text-left px-3 py-1.5 text-xs hover:bg-slate-100 ${activePreset === p.label ? 'text-orchid-700 font-medium bg-orchid-50/40' : 'text-slate-600'}`}
               >
                 {p.label}
               </button>
             ))}
             <button
               onClick={() => { /* keep popover open in custom mode */ }}
-              className={`w-full text-left px-3 py-1.5 text-xs hover:bg-slate-50 ${activePreset === 'Custom' ? 'text-orchid-700 font-medium bg-orchid-50/40' : 'text-slate-600'}`}
+              className={`w-full text-left px-3 py-1.5 text-xs hover:bg-slate-100 ${activePreset === 'Custom' ? 'text-orchid-700 font-medium bg-orchid-50/40' : 'text-slate-600'}`}
             >
               Custom
             </button>

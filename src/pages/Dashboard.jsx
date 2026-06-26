@@ -25,7 +25,7 @@ function Donut({ segments, total }) {
   return (
     <div className="relative w-44 h-44 shrink-0">
       <svg viewBox="0 0 100 100" className="w-44 h-44 -rotate-90">
-        <circle cx="50" cy="50" r={R} fill="none" stroke="#f1f5f9" strokeWidth="13" />
+        <circle cx="50" cy="50" r={R} fill="none" stroke="var(--color-slate-200)" strokeWidth="13" />
         {total > 0 && segments.map((seg, i) => {
           const dash = `${(seg.seconds / total) * circ} ${circ}`
           const rot  = `rotate(${(cum / total) * 360} 50 50)`
@@ -229,7 +229,7 @@ export default function Dashboard() {
             <div className="flex gap-1 bg-slate-100 rounded-xl p-1">
               {[['me', 'Only me'], ['team', 'Team']].map(([v, label]) => (
                 <button key={v} onClick={() => setScope(v)}
-                  className={`px-3 py-1.5 rounded-lg text-sm font-medium transition-colors ${scope === v ? 'bg-white text-slate-800 shadow-sm' : 'text-slate-500 hover:text-slate-700'}`}
+                  className={`px-3 py-1.5 rounded-lg text-sm font-medium transition-colors ${scope === v ? 'bg-surface text-slate-800 shadow-sm' : 'text-slate-500 hover:text-slate-700'}`}
                 >{label}</button>
               ))}
             </div>
@@ -250,7 +250,7 @@ export default function Dashboard() {
       ) : (
         <div className="space-y-5">
           {/* Top stat cards */}
-          <div className="grid grid-cols-3 bg-white rounded-xl border border-slate-200 divide-x divide-slate-100">
+          <div className="grid grid-cols-3 bg-surface rounded-xl border border-slate-200 divide-x divide-slate-100">
             {[
               ['Total time', formatDuration(totalSecs)],
               ['Top project', byProject[0]?.name ?? '—'],
@@ -265,11 +265,11 @@ export default function Dashboard() {
 
           {/* Bar chart + most-tracked list */}
           <div className="grid grid-cols-1 lg:grid-cols-3 gap-5">
-            <div className="lg:col-span-2 bg-white rounded-xl border border-slate-200 p-5">
+            <div className="lg:col-span-2 bg-surface rounded-xl border border-slate-200 p-5">
               <h3 className="text-sm font-semibold text-slate-700 mb-1">Tracked time across {rangeLabel}</h3>
               <StackedDayBars buckets={chartBuckets} labels={false} />
             </div>
-            <div className="bg-white rounded-xl border border-slate-200 p-5">
+            <div className="bg-surface rounded-xl border border-slate-200 p-5">
               <h3 className="text-sm font-semibold text-slate-700 mb-3">Most tracked activities</h3>
               <div className="space-y-2.5">
                 {topActivities.map((a, i) => (
@@ -285,7 +285,7 @@ export default function Dashboard() {
 
           {/* Donut + project list */}
           <div className="grid grid-cols-1 lg:grid-cols-2 gap-5">
-            <div className="bg-white rounded-xl border border-slate-200 p-5">
+            <div className="bg-surface rounded-xl border border-slate-200 p-5">
               <h3 className="text-sm font-semibold text-slate-700 mb-3">Project breakdown</h3>
               <div className="flex flex-col sm:flex-row items-center gap-6">
                 <Donut segments={byProject} total={totalSecs} />
@@ -301,7 +301,7 @@ export default function Dashboard() {
                 </div>
               </div>
             </div>
-            <div className="bg-white rounded-xl border border-slate-200 p-5">
+            <div className="bg-surface rounded-xl border border-slate-200 p-5">
               <h3 className="text-sm font-semibold text-slate-700 mb-3">Time per project</h3>
               <div className="space-y-2">
                 {byProject.map((p, i) => (
@@ -322,7 +322,7 @@ export default function Dashboard() {
           </div>
 
           {scope === 'team' && (
-            <div className="bg-white rounded-xl border border-slate-200 overflow-hidden">
+            <div className="bg-surface rounded-xl border border-slate-200 overflow-hidden">
               <div className="px-5 py-3 border-b border-slate-100 text-xs font-semibold text-slate-400 uppercase tracking-wide grid grid-cols-12 gap-3">
                 <span className="col-span-3">Team member</span>
                 <span className="col-span-4">Latest activity</span>
@@ -335,7 +335,7 @@ export default function Dashboard() {
                 const elapsed = running ? Math.floor((Date.now() - new Date(last.start_time)) / 1000) : null
                 const memberName = row.full_name || row.email
                 return (
-                  <div key={row.id} className="px-5 py-3.5 border-b border-slate-50 grid grid-cols-12 gap-3 items-center hover:bg-slate-50/50">
+                  <div key={row.id} className="px-5 py-3.5 border-b border-slate-200 grid grid-cols-12 gap-3 items-center hover:bg-slate-100/40">
                     <div className="col-span-3 flex items-center gap-3 min-w-0">
                       <div className="w-8 h-8 rounded-full bg-orchid-100 text-orchid-700 flex items-center justify-center text-xs font-bold shrink-0 uppercase">
                         {(memberName).slice(0, 2)}

@@ -85,7 +85,7 @@ function RowMenu({ items }) {
       {open && anchorRect && createPortal(
         <div
           ref={menuRef}
-          className="fixed z-[9999] bg-white border border-slate-200 rounded-lg shadow-lg py-1 w-44"
+          className="fixed z-[9999] bg-surface border border-slate-200 rounded-lg shadow-lg py-1 w-44"
           style={{
             left: pos ? pos.left : anchorRect.right,
             top: pos ? pos.top : anchorRect.bottom,
@@ -97,7 +97,7 @@ function RowMenu({ items }) {
               key={i}
               onClick={e => { e.stopPropagation(); setOpen(false); it.onClick() }}
               className={`w-full flex items-center gap-2 px-3 py-1.5 text-sm text-left transition-colors ${
-                it.danger ? 'text-red-600 hover:bg-red-50' : 'text-slate-700 hover:bg-slate-50'
+                it.danger ? 'text-red-600 hover:bg-red-50' : 'text-slate-700 hover:bg-slate-100'
               }`}
             >
               {it.icon}
@@ -200,7 +200,7 @@ function StackRow({ group, isOpen, onToggle, onResume }) {
       role="button"
       tabIndex={0}
       onKeyDown={e => { if (e.key === 'Enter' || e.key === ' ') { e.preventDefault(); onToggle() } }}
-      className="w-full flex items-center gap-3 px-4 py-3 text-left hover:bg-slate-50 transition-colors cursor-pointer"
+      className="w-full flex items-center gap-3 px-4 py-3 text-left hover:bg-slate-100 transition-colors cursor-pointer"
     >
       <div className="flex-1 min-w-0 flex items-center gap-2 text-sm">
         <ChevronDown
@@ -320,7 +320,7 @@ export default function TimeEntryList({ entries, onRefresh }) {
                 <h3 className="text-sm font-semibold text-orchid-900">{formatDateHeader(date)}</h3>
                 <span className="text-sm font-mono text-orchid-800">Total: {formatDuration(totalSecs)}</span>
               </div>
-              <div className="bg-white divide-y divide-slate-100">
+              <div className="bg-surface divide-y divide-slate-200">
                 {stacks.map(g => {
                   if (g.entries.length === 1) {
                     const e = g.entries[0]

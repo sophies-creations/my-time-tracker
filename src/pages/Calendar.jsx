@@ -193,7 +193,7 @@ export default function Calendar() {
           <div className="w-6 h-6 border-2 border-orchid-600 border-t-transparent rounded-full animate-spin" />
         </div>
       ) : (
-        <div className="overflow-x-auto rounded-xl border border-slate-200 bg-white shadow-sm">
+        <div className="overflow-x-auto rounded-xl border border-slate-200 bg-surface shadow-sm">
           <table className="border-separate border-spacing-0 w-full min-w-[640px]">
             <thead>
               <tr>
@@ -254,7 +254,7 @@ export default function Calendar() {
 
                 return (
                   <tr key={m.id} className={`group/row ${isHidden ? 'opacity-40' : ''}`}>
-                    <td className={`sticky left-0 z-10 bg-white px-3 py-0 border-r border-slate-200 ${borderB}`}>
+                    <td className={`sticky left-0 z-10 bg-surface px-3 py-0 border-r border-slate-200 ${borderB}`}>
                       <div className="flex items-center justify-between gap-1 min-h-[48px]">
                         <span className={`text-sm font-medium whitespace-nowrap ${isHidden ? 'line-through text-slate-400' : 'text-slate-700'}`}>
                           {m.full_name || m.email}
@@ -365,7 +365,7 @@ function ScheduleCell({ content, isManager, onSave }) {
                : isNoInfo   ? 'bg-slate-200'
                : isTraining ? 'bg-fuchsia-50'
                : content    ? 'bg-emerald-50'
-               :               'bg-white'
+               :               'bg-surface'
 
   const textColor = isOff      ? 'text-red-700 font-semibold'
                   : isNoInfo   ? 'text-slate-500 font-semibold'
@@ -385,7 +385,7 @@ function ScheduleCell({ content, isManager, onSave }) {
             if (e.key === 'Escape') cancel()
           }}
           onBlur={commit}
-          className="w-full min-h-[48px] px-2 py-1.5 text-xs text-center text-slate-800 bg-white border-2 border-orchid-400 outline-none"
+          className="w-full min-h-[48px] px-2 py-1.5 text-xs text-center text-slate-800 bg-surface border-2 border-orchid-400 outline-none"
         />
         <div className="absolute top-0.5 right-0.5 grid grid-cols-2 gap-0.5 z-10">
           <button
@@ -437,7 +437,7 @@ function RequestsPanel({ requests, onDecide }) {
   const canDecide = !!onDecide
 
   return (
-    <div className="bg-white rounded-xl border border-slate-200 divide-y divide-slate-100">
+    <div className="bg-surface rounded-xl border border-slate-200 divide-y divide-slate-100">
       {requests.map(req => {
         const name   = req.user?.full_name || req.user?.email || 'Unknown'
         const action = KIND_LABEL[req.kind] ?? req.kind
@@ -617,7 +617,7 @@ function ShiftModal({ mode, shift, day, kind, members, currentUser, isAdmin, onC
 
   return (
     <div className="fixed inset-0 bg-black/50 flex items-center justify-center z-50 p-4">
-      <div className="bg-white rounded-2xl shadow-2xl w-full max-w-md">
+      <div className="bg-surface rounded-2xl shadow-2xl w-full max-w-md">
         <div className="flex items-center justify-between px-6 py-4 border-b border-slate-100">
           <h2 className="text-base font-semibold text-slate-800">{title}</h2>
           <button onClick={onClose} className="text-slate-400 hover:text-slate-600"><X size={18} /></button>
@@ -714,7 +714,7 @@ function ShiftModal({ mode, shift, day, kind, members, currentUser, isAdmin, onC
         </div>
 
         <div className="flex justify-end gap-2 px-6 py-4 border-t border-slate-100">
-          <button onClick={onClose} className="px-4 py-2 text-sm text-slate-600 hover:bg-slate-50 rounded-lg">Cancel</button>
+          <button onClick={onClose} className="px-4 py-2 text-sm text-slate-600 hover:bg-slate-100 rounded-lg">Cancel</button>
           <button
             onClick={handleSave} disabled={saving}
             className="px-4 py-2 text-sm bg-orchid-600 hover:bg-orchid-700 text-white rounded-lg font-medium disabled:opacity-50"

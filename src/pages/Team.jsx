@@ -187,7 +187,7 @@ export default function Team() {
         </div>
       </div>
 
-      <div className="bg-white rounded-xl border border-slate-200 mb-6 overflow-hidden">
+      <div className="bg-surface rounded-xl border border-slate-200 mb-6 overflow-hidden">
         {groupedMembers.length === 0 && (
           <div className="px-5 py-10 text-center text-slate-400 text-sm">
             No team members found
@@ -348,7 +348,7 @@ export default function Team() {
       {isAdmin && nameRequests.length > 0 && (
         <div className="mb-6">
           <h2 className="text-base font-semibold text-slate-700 mb-3">Pending name changes</h2>
-          <div className="bg-white rounded-xl border border-slate-200 divide-y divide-slate-100">
+          <div className="bg-surface rounded-xl border border-slate-200 divide-y divide-slate-100">
             {nameRequests.map(req => (
               <div key={req.id} className="flex items-center gap-4 px-5 py-4">
                 <div className="flex-1 min-w-0">
@@ -382,7 +382,7 @@ export default function Team() {
       {isAdmin && invites.length > 0 && (
         <div>
           <h2 className="text-base font-semibold text-slate-700 mb-3">Pending invites</h2>
-          <div className="bg-white rounded-xl border border-slate-200 divide-y divide-slate-100">
+          <div className="bg-surface rounded-xl border border-slate-200 divide-y divide-slate-100">
             {invites.map(invite => (
               <div key={invite.id} className="flex items-center gap-4 px-5 py-4">
                 <div className="flex-1 min-w-0">

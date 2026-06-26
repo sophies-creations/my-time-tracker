@@ -32,7 +32,7 @@ function ClientModal({ client, onClose, onSaved }) {
 
   return (
     <div className="fixed inset-0 bg-black/50 flex items-center justify-center z-50 p-4">
-      <div className="bg-white rounded-2xl shadow-2xl w-full max-w-sm">
+      <div className="bg-surface rounded-2xl shadow-2xl w-full max-w-sm">
         <div className="flex items-center justify-between px-6 py-4 border-b border-slate-100">
           <h2 className="text-base font-semibold text-slate-800">{client ? 'Edit client' : 'New client'}</h2>
           <button onClick={onClose} className="text-slate-400 hover:text-slate-600"><X size={18} /></button>
@@ -56,7 +56,7 @@ function ClientModal({ client, onClose, onSaved }) {
           </div>
         </div>
         <div className="flex justify-end gap-2 px-6 py-4 border-t border-slate-100">
-          <button onClick={onClose} className="px-4 py-2 text-sm text-slate-600 hover:bg-slate-50 rounded-lg">Cancel</button>
+          <button onClick={onClose} className="px-4 py-2 text-sm text-slate-600 hover:bg-slate-100 rounded-lg">Cancel</button>
           <button onClick={handleSave} disabled={saving}
             className="px-4 py-2 text-sm bg-orchid-600 hover:bg-orchid-700 text-white rounded-lg font-medium disabled:opacity-50">
             {saving ? 'Saving…' : 'Save'}
@@ -101,7 +101,7 @@ function AssignProjectsModal({ client, projects, onClose, onSaved }) {
 
   return (
     <div className="fixed inset-0 bg-black/50 flex items-center justify-center z-50 p-4">
-      <div className="bg-white rounded-2xl shadow-2xl w-full max-w-sm">
+      <div className="bg-surface rounded-2xl shadow-2xl w-full max-w-sm">
         <div className="flex items-center justify-between px-6 py-4 border-b border-slate-100">
           <h2 className="text-base font-semibold text-slate-800">Assign projects — {client.name}</h2>
           <button onClick={onClose} className="text-slate-400 hover:text-slate-600"><X size={18} /></button>
@@ -110,7 +110,7 @@ function AssignProjectsModal({ client, projects, onClose, onSaved }) {
           {projects.length === 0 && <p className="text-sm text-slate-400">No active projects</p>}
           {projects.map(p => (
             <button key={p.id} type="button" onClick={() => toggle(p.id)}
-              className="w-full flex items-center gap-3 px-3 py-2 rounded-lg hover:bg-slate-50 text-left">
+              className="w-full flex items-center gap-3 px-3 py-2 rounded-lg hover:bg-slate-100 text-left">
               <span className={`w-4 h-4 rounded border-2 flex items-center justify-center shrink-0 transition-colors ${selected.has(p.id) ? 'bg-orchid-600 border-orchid-600' : 'border-slate-300'}`}>
                 {selected.has(p.id) && <Check size={10} className="text-white" />}
               </span>
@@ -120,7 +120,7 @@ function AssignProjectsModal({ client, projects, onClose, onSaved }) {
           ))}
         </div>
         <div className="flex justify-end gap-2 px-6 py-4 border-t border-slate-100">
-          <button onClick={onClose} className="px-4 py-2 text-sm text-slate-600 hover:bg-slate-50 rounded-lg">Cancel</button>
+          <button onClick={onClose} className="px-4 py-2 text-sm text-slate-600 hover:bg-slate-100 rounded-lg">Cancel</button>
           <button onClick={handleSave} disabled={saving}
             className="px-4 py-2 text-sm bg-orchid-600 hover:bg-orchid-700 text-white rounded-lg font-medium disabled:opacity-50">
             {saving ? 'Saving…' : 'Save'}
@@ -191,7 +191,7 @@ export default function Clients() {
             const projectCount = client.client_projects?.length ?? 0
             const hasLogin     = !!client.profile_id
             return (
-              <div key={client.id} className="bg-white rounded-xl border border-slate-200 px-5 py-4">
+              <div key={client.id} className="bg-surface rounded-xl border border-slate-200 px-5 py-4">
                 <div className="flex items-center gap-4">
                   <div className="w-10 h-10 rounded-xl bg-orchid-100 flex items-center justify-center text-orchid-600 font-bold text-sm shrink-0">
                     {client.name.slice(0, 1).toUpperCase()}

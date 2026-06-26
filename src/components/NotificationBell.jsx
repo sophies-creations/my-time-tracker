@@ -94,7 +94,7 @@ export default function NotificationBell() {
       </button>
 
       {open && (
-        <div className="absolute right-0 top-full mt-2 w-96 max-h-[80vh] bg-white border border-slate-200 rounded-xl shadow-xl z-50 flex flex-col overflow-hidden">
+        <div className="absolute right-0 top-full mt-2 w-96 max-h-[80vh] bg-surface border border-slate-200 rounded-xl shadow-xl z-50 flex flex-col overflow-hidden">
           <div className="flex items-center justify-between px-4 py-3 border-b border-slate-100 flex-shrink-0">
             <span className="text-sm font-semibold text-slate-800">
               Pending approvals{total > 0 && <span className="ml-1.5 text-orchid-600">({total})</span>}
