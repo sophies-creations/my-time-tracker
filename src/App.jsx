@@ -3,6 +3,7 @@ import { BrowserRouter, Routes, Route, Navigate } from 'react-router-dom'
 import { Toaster } from 'react-hot-toast'
 import { AuthProvider } from './contexts/AuthContext'
 import { DataProvider } from './contexts/DataContext'
+import { ThemeProvider } from './contexts/ThemeContext'
 import ProtectedRoute from './components/ProtectedRoute'
 import Layout from './components/Layout'
 
@@ -30,6 +31,7 @@ export default function App() {
   return (
     <BrowserRouter>
       <AuthProvider>
+        <ThemeProvider>
         <DataProvider>
           <Toaster position="bottom-right" toastOptions={{ duration: 3000 }} />
           <Suspense fallback={<PageLoader />}>
@@ -61,6 +63,7 @@ export default function App() {
             </Routes>
           </Suspense>
         </DataProvider>
+        </ThemeProvider>
       </AuthProvider>
     </BrowserRouter>
   )

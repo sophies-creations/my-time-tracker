@@ -1,5 +1,7 @@
 @import "tailwindcss";
 
+@custom-variant dark (&:where(.dark, .dark *));
+
 @theme {
   --color-orchid-50: #fdf4fd;
   --color-orchid-100: #fae8fa;
@@ -12,6 +14,47 @@
   --color-orchid-800: #87347d;
   --color-orchid-900: #6e2d67;
   --color-orchid-950: #420140;
+
+  /* Semantic surface token — adapts to dark mode without touching --color-white */
+  --color-surface: white;
+
+  /* Sidebar tokens — swap in dark mode */
+  --color-sidebar: #A2899F;
+  --color-sidebar-border: #8a6e87;
+}
+
+/* ─── Dark mode overrides ─────────────────────────────────────────── */
+.dark {
+  --color-surface: #352A34;
+  --color-sidebar: #191318;
+  --color-sidebar-border: #352A34;
+
+  /* Slate text & border scale — flip light→dark for automatic text adaptation */
+  --color-slate-50:  #191318;
+  --color-slate-100: #2d2030;
+  --color-slate-200: #3d2d3a;
+  --color-slate-300: #52404F;
+  --color-slate-400: #8A6E87;
+  --color-slate-500: #A2899F;
+  --color-slate-600: #B8A6B6;
+  --color-slate-700: #D4C0D2;
+  --color-slate-800: #EEE0EC;
+
+  /* Orchid light tints — inverted for dark mode pills/backgrounds */
+  --color-orchid-50:  #2d1f2c;
+  --color-orchid-100: #3d2a3b;
+  --color-orchid-200: #4d3549;
+}
+
+/* Global dark-mode input / select / textarea background.
+   Tailwind utility classes have higher cascade priority and will override this. */
+@layer base {
+  .dark input:not([type=checkbox]):not([type=radio]):not([type=range]):not([type=file]):not([type=color]):not([type=button]):not([type=submit]):not([type=reset]),
+  .dark select,
+  .dark textarea {
+    background-color: var(--color-slate-100);
+    color: var(--color-slate-800);
+  }
 }
 
 /* Compact, Clockify-style date picker — tighter cells and chrome than
@@ -29,6 +72,10 @@
   --rdp-nav_button-height: 1.5rem;
   --rdp-weekday-padding: 0.2rem 0;
   font-size: 12px;
+}
+.dark .compact-daypicker .rdp-root {
+  --rdp-accent-background-color: #3d2a3b;
+  color: var(--color-slate-700);
 }
 .compact-daypicker .rdp-month_caption {
   height: 1.5rem;
