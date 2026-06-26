@@ -2,6 +2,7 @@ import { useState, useEffect } from 'react'
 import { useSearchParams, useNavigate } from 'react-router-dom'
 import { Clock } from 'lucide-react'
 import { supabase } from '../lib/supabase'
+import LanguagesPicker from '../components/LanguagesPicker'
 import toast from 'react-hot-toast'
 
 export default function AcceptInvite() {
@@ -16,12 +17,13 @@ export default function AcceptInvite() {
   //    auth user already exists; Supabase's redirect put session tokens in
   //    the URL hash, which supabase-js auto-consumes, so we just need a
   //    name + password to finish the account.
-  const [invite, setInvite]         = useState(null)
+  const [invite, setInvite]           = useState(null)
   const [sessionUser, setSessionUser] = useState(null)
-  const [notFound, setNotFound]     = useState(false)
-  const [fullName, setFullName]     = useState('')
-  const [password, setPassword]     = useState('')
-  const [loading, setLoading]       = useState(false)
+  const [notFound, setNotFound]       = useState(false)
+  const [fullName, setFullName]       = useState('')
+  const [password, setPassword]       = useState('')
+  const [languages, setLanguages]     = useState([])
+  const [loading, setLoading]         = useState(false)
 
   useEffect(() => {
     if (token) {
@@ -55,17 +57,30 @@ export default function AcceptInvite() {
         data: { full_name: fullName },
       })
       if (error) { toast.error(error.message); setLoading(false); return }
+      // Session is live — reliably save languages now so the blocking modal never shows.
+      if (languages.length > 0) {
+        const { error: langErr } = await supabase
+          .from('profiles')
+          .update({ languages })
+          .eq('id', sessionUser.id)
+          .select()
+        if (langErr) console.error('[AcceptInvite] languages save error:', langErr)
+      }
       toast.success('Welcome aboard!')
       navigate('/')
       return
     }
 
-    const { error } = await supabase.auth.signUp({
+    const { data: signUpData, error } = await supabase.auth.signUp({
       email: invite.email,
       password,
       options: { data: { full_name: fullName } },
     })
     if (error) { toast.error(error.message); setLoading(false); return }
+    // Save languages if the session is immediately available (email confirm disabled).
+    if (signUpData?.session?.user?.id && languages.length > 0) {
+      await supabase.from('profiles').update({ languages }).eq('id', signUpData.session.user.id)
+    }
     toast.success('Account created! Check your email to confirm, then sign in.')
     navigate('/login')
   }
@@ -118,6 +133,10 @@ export default function AcceptInvite() {
               type="text" value={fullName} onChange={e => setFullName(e.target.value)} required autoFocus
               className="w-full border border-slate-200 rounded-lg px-3 py-2.5 text-sm outline-none focus:ring-2 focus:ring-orchid-500"
             />
+          </div>
+          <div>
+            <label className="block text-xs font-medium text-slate-600 mb-1.5">Languages spoken</label>
+            <LanguagesPicker value={languages} onChange={setLanguages} />
           </div>
           <div>
             <label className="block text-xs font-medium text-slate-600 mb-1.5">Email</label>

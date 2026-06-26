@@ -1,5 +1,6 @@
 import { Navigate, Outlet } from 'react-router-dom'
 import { useAuth } from '../contexts/AuthContext'
+import LanguagesModal from './LanguagesModal'
 
 export default function ProtectedRoute({ clientOnly = false }) {
   const { user, profile, loading, signOut } = useAuth()
@@ -42,6 +43,18 @@ export default function ProtectedRoute({ clientOnly = false }) {
 
   if (clientOnly && !isClient) return <Navigate to="/tracker" replace />
   if (!clientOnly && isClient) return <Navigate to="/client" replace />
+
+  // Block team members (non-clients) who haven't set their languages yet.
+  // The modal has no close/escape/backdrop-click — they must pick at least one.
+  // It disappears automatically once refreshProfile() resolves with languages set.
+  if (!clientOnly && !profile?.languages?.length) {
+    return (
+      <>
+        <Outlet />
+        <LanguagesModal />
+      </>
+    )
+  }
 
   return <Outlet />
 }

@@ -3,19 +3,23 @@ import { Clock } from 'lucide-react'
 import { format } from 'date-fns'
 import { supabase } from '../lib/supabase'
 import { useAuth } from '../contexts/AuthContext'
+import LanguagesPicker from '../components/LanguagesPicker'
 import toast from 'react-hot-toast'
 
 export default function ProfileSettings() {
   const { profile, refreshProfile, isAdmin, isOwner } = useAuth()
   const canEditDirectly = isAdmin || isOwner
 
-  const [newName, setNewName]   = useState('')
-  const [saving, setSaving]     = useState(false)
-  const [history, setHistory]   = useState([])
+  const [newName, setNewName]     = useState('')
+  const [saving, setSaving]       = useState(false)
+  const [history, setHistory]     = useState([])
+  const [languages, setLanguages] = useState([])
+  const [savingLang, setSavingLang] = useState(false)
 
   useEffect(() => {
     if (profile) {
       setNewName(profile.full_name ?? '')
+      setLanguages(profile.languages ?? [])
       fetchHistory()
     }
   }, [profile?.id]) // eslint-disable-line react-hooks/exhaustive-deps
@@ -51,6 +55,24 @@ export default function ProfileSettings() {
       toast.error(err?.message ?? 'Could not update name')
     } finally {
       setSaving(false)
+    }
+  }
+
+  async function handleSaveLanguages() {
+    setSavingLang(true)
+    try {
+      const { error } = await supabase
+        .from('profiles')
+        .update({ languages })
+        .eq('id', profile.id)
+        .select()
+      if (error) throw error
+      toast.success('Languages updated')
+      refreshProfile()
+    } catch (err) {
+      toast.error(err?.message ?? 'Could not update languages')
+    } finally {
+      setSavingLang(false)
     }
   }
 
@@ -122,6 +144,23 @@ export default function ProfileSettings() {
               Pending request: "{pendingRequest.new_name}" — awaiting admin approval.
             </p>
           )}
+        </div>
+
+        <hr className="border-slate-100" />
+
+        {/* Languages */}
+        <div>
+          <label className="block text-xs font-semibold text-slate-600 uppercase tracking-wide mb-2">
+            Languages spoken
+          </label>
+          <LanguagesPicker value={languages} onChange={setLanguages} />
+          <button
+            onClick={handleSaveLanguages}
+            disabled={savingLang || languages.length === 0}
+            className="mt-3 px-4 py-2 text-sm font-medium bg-orchid-600 hover:bg-orchid-700 text-white rounded-lg disabled:opacity-50 disabled:cursor-not-allowed transition-colors"
+          >
+            {savingLang ? 'Saving…' : 'Save languages'}
+          </button>
         </div>
       </div>
 

@@ -1,16 +1,19 @@
 import { useState } from 'react'
 import { Navigate, useSearchParams } from 'react-router-dom'
 import { Clock } from 'lucide-react'
+import { supabase } from '../lib/supabase'
 import { useAuth } from '../contexts/AuthContext'
+import LanguagesPicker from '../components/LanguagesPicker'
 import toast from 'react-hot-toast'
 
 export default function Login() {
   const { user, profile, signIn, signUp } = useAuth()
   const [searchParams] = useSearchParams()
-  const [mode, setMode]     = useState(searchParams.get('mode') === 'signup' ? 'signup' : 'login')
-  const [email, setEmail]   = useState('')
+  const [mode, setMode]         = useState(searchParams.get('mode') === 'signup' ? 'signup' : 'login')
+  const [email, setEmail]       = useState('')
   const [password, setPassword] = useState('')
   const [fullName, setFullName] = useState('')
+  const [languages, setLanguages] = useState([])
   const [loading, setLoading]   = useState(false)
 
   if (user && profile) {
@@ -25,8 +28,13 @@ export default function Login() {
       const { error } = await signIn(email, password)
       if (error) { toast.error(error.message); setLoading(false); return }
     } else {
-      const { error } = await signUp(email, password, fullName)
+      const { data: signUpData, error } = await signUp(email, password, fullName)
       if (error) { toast.error(error.message); setLoading(false); return }
+      // If the session is available immediately (email confirmation disabled),
+      // save languages now. Otherwise the blocking modal handles it on first login.
+      if (signUpData?.session?.user?.id && languages.length > 0) {
+        await supabase.from('profiles').update({ languages }).eq('id', signUpData.session.user.id)
+      }
       toast.success('Account created! Check your email to confirm, then sign in.')
       setMode('login')
       setPassword('')
@@ -50,13 +58,19 @@ export default function Login() {
 
         <form onSubmit={handleSubmit} className="space-y-4">
           {mode === 'signup' && (
-            <div>
-              <label className="block text-xs font-medium text-slate-600 mb-1.5">Full name</label>
-              <input
-                type="text" value={fullName} onChange={e => setFullName(e.target.value)} required
-                className="w-full border border-slate-200 rounded-lg px-3 py-2.5 text-sm outline-none focus:ring-2 focus:ring-orchid-500 focus:border-transparent"
-              />
-            </div>
+            <>
+              <div>
+                <label className="block text-xs font-medium text-slate-600 mb-1.5">Full name</label>
+                <input
+                  type="text" value={fullName} onChange={e => setFullName(e.target.value)} required
+                  className="w-full border border-slate-200 rounded-lg px-3 py-2.5 text-sm outline-none focus:ring-2 focus:ring-orchid-500 focus:border-transparent"
+                />
+              </div>
+              <div>
+                <label className="block text-xs font-medium text-slate-600 mb-1.5">Languages spoken</label>
+                <LanguagesPicker value={languages} onChange={setLanguages} />
+              </div>
+            </>
           )}
           <div>
             <label className="block text-xs font-medium text-slate-600 mb-1.5">Email</label>

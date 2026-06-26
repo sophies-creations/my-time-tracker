@@ -278,6 +278,18 @@ export default function Team() {
                   </div>
                 )}
                 <p className="text-xs text-slate-400 truncate">{member.email}</p>
+                {member.languages?.length > 0 && (
+                  <div className="flex flex-wrap gap-1 mt-1">
+                    {member.languages.map(lang => (
+                      <span
+                        key={lang}
+                        className="text-[10px] font-medium px-1.5 py-0.5 rounded-full bg-orchid-50 text-orchid-700 border border-orchid-100"
+                      >
+                        {lang}
+                      </span>
+                    ))}
+                  </div>
+                )}
               </div>
 
               <div className="flex items-center gap-1.5">
