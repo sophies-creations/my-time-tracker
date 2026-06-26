@@ -3,7 +3,7 @@ import {
   format, startOfWeek, endOfWeek, addWeeks, subWeeks,
   eachDayOfInterval, startOfDay, endOfDay, startOfMonth,
 } from 'date-fns'
-import { Download, ChevronLeft, ChevronRight, ChevronDown } from 'lucide-react'
+import { Download, ChevronLeft, ChevronRight, ChevronDown, Pencil, Trash2, Plus } from 'lucide-react'
 import { supabase } from '../lib/supabase'
 import { useAuth } from '../contexts/AuthContext'
 import { useData } from '../contexts/DataContext'
@@ -13,6 +13,7 @@ import DateRangePicker from '../components/DateRangePicker'
 import StackedDayBars, { buildBuckets } from '../components/StackedDayBars'
 import FilterPill, { SelectableList, multiValueLabel } from '../components/FilterPill'
 import InlineDurationEdit from '../components/InlineDurationEdit'
+import AdminTimeEntryModal from '../components/AdminTimeEntryModal'
 import toast from 'react-hot-toast'
 
 const WEEK_OPT = { weekStartsOn: 1 }
@@ -170,7 +171,7 @@ function DonutChart({ segments, total, size = 168 }) {
 }
 
 export default function Reports() {
-  const { isManager } = useAuth()
+  const { isManager, isAdmin } = useAuth()
   const { clients } = useData()
   const [tab, setTab] = useState('summary')
 
@@ -199,6 +200,7 @@ export default function Reports() {
   const [allProjects, setAllProjects] = useState([])
   const [loading, setLoading]         = useState(false)
   const [weekRef, setWeekRef]         = useState(new Date())
+  const [adminModal, setAdminModal]   = useState(null)
 
   useEffect(() => {
     if (isManager) fetchUsers()
@@ -267,6 +269,20 @@ export default function Reports() {
   function resetFilters() {
     setStagedProjects([]); setStagedUsers([]); setStagedClients([]); setStagedDescription(''); setStagedStatus('completed')
     setFilterProjects([]); setFilterUsers([]); setFilterClients([]); setFilterDescription(''); setFilterStatus('completed')
+  }
+
+  async function handleAdminDelete(entry) {
+    if (!confirm(`Delete this time entry? This cannot be undone.`)) return
+    try {
+      const { data, error } = await supabase.rpc('admin_delete_time_entry', { p_entry_id: entry.id })
+      if (error) throw error
+      if (!data || data.length === 0) throw new Error('Entry not found — it may have already been deleted')
+      toast.success('Entry deleted')
+      fetchEntries()
+    } catch (err) {
+      console.error('[Reports] admin delete error:', err)
+      toast.error(err?.message ?? 'Delete failed')
+    }
   }
 
   async function handleExport() {
@@ -589,6 +605,15 @@ export default function Reports() {
             onChange={setRange}
             align="right"
           />
+          {isAdmin && (
+            <button
+              onClick={() => setAdminModal({ entry: null })}
+              className="flex items-center gap-2 bg-orchid-600 hover:bg-orchid-700 text-white px-4 py-2 rounded-lg text-sm font-medium transition-colors"
+            >
+              <Plus size={16} />
+              Add entry
+            </button>
+          )}
           <button onClick={handleExport}
             className="flex items-center gap-2 bg-emerald-600 hover:bg-emerald-700 text-white px-4 py-2 rounded-lg text-sm font-medium transition-colors"
           >
@@ -786,6 +811,7 @@ export default function Reports() {
                               {isManager && <th className="text-left px-4 py-2 text-[10px] font-semibold text-slate-400 uppercase tracking-wide">User</th>}
                               <th className="text-left px-4 py-2 text-[10px] font-semibold text-slate-400 uppercase tracking-wide">Date</th>
                               <th className="text-right px-4 py-2 text-[10px] font-semibold text-slate-400 uppercase tracking-wide">Duration</th>
+                              {isAdmin && <th className="px-4 py-2 text-[10px] font-semibold text-slate-400 uppercase tracking-wide" />}
                             </tr>
                           </thead>
                           <tbody className="divide-y divide-slate-100">
@@ -807,6 +833,26 @@ export default function Reports() {
                                 <td className="px-4 py-2.5 text-right">
                                   <InlineDurationEdit entry={entry} canEdit={isManager} onSaved={fetchEntries} className="text-slate-700" />
                                 </td>
+                                {isAdmin && (
+                                  <td className="px-3 py-2.5">
+                                    <div className="flex items-center gap-1 justify-end">
+                                      <button
+                                        onClick={() => setAdminModal({ entry })}
+                                        title="Edit entry"
+                                        className="p-1.5 text-slate-400 hover:text-orchid-600 hover:bg-orchid-50 rounded transition-colors"
+                                      >
+                                        <Pencil size={13} />
+                                      </button>
+                                      <button
+                                        onClick={() => handleAdminDelete(entry)}
+                                        title="Delete entry"
+                                        className="p-1.5 text-slate-400 hover:text-red-600 hover:bg-red-50 rounded transition-colors"
+                                      >
+                                        <Trash2 size={13} />
+                                      </button>
+                                    </div>
+                                  </td>
+                                )}
                               </tr>
                             ))}
                           </tbody>
@@ -903,6 +949,14 @@ export default function Reports() {
             </div>
           )}
         </>
+      )}
+
+      {adminModal && (
+        <AdminTimeEntryModal
+          entry={adminModal.entry}
+          onClose={() => setAdminModal(null)}
+          onSaved={() => { setAdminModal(null); fetchEntries() }}
+        />
       )}
     </div>
   )
