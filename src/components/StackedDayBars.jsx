@@ -137,7 +137,7 @@ export default function StackedDayBars({ buckets, labels = 'auto' }) {
                       key={j}
                       style={{
                         height: `${(s.seconds / b.total) * 100}%`,
-                        backgroundColor: s.color,
+                        backgroundColor: '#c44fba',
                       }}
                     />
                   ))}
