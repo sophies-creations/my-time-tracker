@@ -58,7 +58,7 @@ export function AuthProvider({ children }) {
   function loadProfile(uid) {
     if (lastUid.current === uid) return // already loaded / in flight
     lastUid.current = uid
-    fetchProfile(uid)
+    return fetchProfile(uid)
   }
 
   async function fetchProfile(userId) {
@@ -138,7 +138,7 @@ export function AuthProvider({ children }) {
       refreshProfile: () => {
         if (!user) return
         lastUid.current = null
-        loadProfile(user.id)
+        return loadProfile(user.id)
       },
     }}>
       {children}

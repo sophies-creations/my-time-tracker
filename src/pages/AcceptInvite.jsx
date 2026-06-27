@@ -2,12 +2,14 @@ import { useState, useEffect } from 'react'
 import { useSearchParams, useNavigate } from 'react-router-dom'
 import { Clock } from 'lucide-react'
 import { supabase } from '../lib/supabase'
+import { useAuth } from '../contexts/AuthContext'
 import LanguagesPicker from '../components/LanguagesPicker'
 import toast from 'react-hot-toast'
 
 export default function AcceptInvite() {
   const [searchParams] = useSearchParams()
   const navigate = useNavigate()
+  const { refreshProfile } = useAuth()
   const token = searchParams.get('token')
 
   // Two flows land on this page:
@@ -66,6 +68,9 @@ export default function AcceptInvite() {
           .select()
         if (langErr) console.error('[AcceptInvite] languages save error:', langErr)
       }
+      // Reload the profile from DB before navigating so ProtectedRoute sees
+      // the saved languages immediately and the blocking modal never fires.
+      await refreshProfile()
       toast.success('Welcome aboard!')
       navigate('/')
       return
