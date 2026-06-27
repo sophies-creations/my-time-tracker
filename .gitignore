@@ -4,6 +4,7 @@
 
 # One-time import data — never commit
 silent_accounts.csv
+invite_accounts.csv
 
 # Claude Code memory
 .claude/
