@@ -47,7 +47,7 @@ function MemberBar({ segments, total, max }) {
       <div className="flex h-full" style={{ width: `${max ? (total / max) * 100 : 0}%` }}>
         {segments.map((s, i) => (
           <div key={i} title={`${s.name}: ${formatDuration(s.seconds)}`}
-            style={{ width: `${(s.seconds / total) * 100}%`, backgroundColor: '#c44fba' }} />
+            style={{ width: `${(s.seconds / total) * 100}%`, backgroundColor: 'var(--color-bar-fill)' }} />
         ))}
       </div>
     </div>
@@ -307,7 +307,7 @@ export default function Dashboard() {
                     <span className="w-28 text-right text-xs text-slate-500 truncate shrink-0">{p.name}</span>
                     <span className="font-mono text-xs text-slate-600 w-20 shrink-0">{formatDuration(p.seconds)}</span>
                     <div className="flex-1 h-3.5 bg-slate-100 rounded-sm overflow-hidden">
-                      <div className="h-full rounded-sm" style={{ width: `${totalSecs ? (p.seconds / totalSecs) * 100 : 0}%`, backgroundColor: '#c44fba' }} />
+                      <div className="h-full rounded-sm" style={{ width: `${totalSecs ? (p.seconds / totalSecs) * 100 : 0}%`, backgroundColor: 'var(--color-bar-fill)' }} />
                     </div>
                     <span className="w-12 text-right text-xs font-mono text-slate-400 shrink-0">
                       {totalSecs ? ((p.seconds / totalSecs) * 100).toFixed(1) : 0}%

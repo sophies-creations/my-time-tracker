@@ -642,8 +642,8 @@ export default function Reports() {
             <div className="space-y-5">
               <div className="rounded-xl border border-slate-200 shadow-sm">
                 <div className="bg-orchid-50/70 border-b border-orchid-100 rounded-t-xl px-5 py-3 flex items-center justify-between">
-                  <span className="text-xs uppercase tracking-wide text-orchid-700 font-semibold">Total</span>
-                  <span className="text-xl font-bold font-mono tabular-nums text-orchid-900">
+                  <span className="text-xs uppercase tracking-wide font-semibold" style={{ color: 'var(--color-chart-total)' }}>Total</span>
+                  <span className="text-xl font-bold font-mono tabular-nums" style={{ color: 'var(--color-chart-total)' }}>
                     {formatDuration(totalSecs)}
                   </span>
                 </div>

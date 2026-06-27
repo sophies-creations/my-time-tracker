@@ -21,6 +21,10 @@
   /* Sidebar tokens — swap in dark mode */
   --color-sidebar: #DEDAE2;
   --color-sidebar-border: #c8c2ce;
+
+  /* Bar/column chart fill and total label — swap in dark mode */
+  --color-bar-fill: #6E4D67;
+  --color-chart-total: #6E4D67;
 }
 
 /* ─── Dark mode overrides ─────────────────────────────────────────── */
@@ -28,6 +32,8 @@
   --color-surface: #352A34;
   --color-sidebar: #191318;
   --color-sidebar-border: #352A34;
+  --color-bar-fill: #BE86B5;
+  --color-chart-total: #E0B9D9;
 
   /* Slate text & border scale — flip light→dark for automatic text adaptation */
   --color-slate-50:  #191318;
