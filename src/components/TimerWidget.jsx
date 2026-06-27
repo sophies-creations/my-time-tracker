@@ -1,4 +1,4 @@
-import { useState, useEffect, useRef, useMemo } from 'react'
+import { useState, useEffect, useRef, useMemo, useCallback } from 'react'
 import { Play, Square, ChevronDown, Plus, Star, Search } from 'lucide-react'
 import { supabase } from '../lib/supabase'
 import { useAuth } from '../contexts/AuthContext'
@@ -27,7 +27,13 @@ export default function TimerWidget() {
   const [creatingProject, setCreatingProject] = useState(false)
   const [busy, setBusy] = useState(false)
 
+  // Autocomplete state
+  const [suggestions, setSuggestions] = useState([])
+  const [acOpen, setAcOpen]           = useState(false)
+  const [acIndex, setAcIndex]         = useState(-1)
+
   const projectRef = useRef(null)
+  const descRef    = useRef(null)
 
   useEffect(() => { if (user) fetchRunningEntry() }, [user])
 
@@ -41,6 +47,18 @@ export default function TimerWidget() {
   useEffect(() => {
     function onDown(e) {
       if (projectRef.current && !projectRef.current.contains(e.target)) setProjectOpen(false)
+    }
+    document.addEventListener('mousedown', onDown)
+    return () => document.removeEventListener('mousedown', onDown)
+  }, [])
+
+  // Close autocomplete when clicking outside the description area
+  useEffect(() => {
+    function onDown(e) {
+      if (descRef.current && !descRef.current.contains(e.target)) {
+        setAcOpen(false)
+        setAcIndex(-1)
+      }
     }
     document.addEventListener('mousedown', onDown)
     return () => document.removeEventListener('mousedown', onDown)
@@ -67,6 +85,87 @@ export default function TimerWidget() {
     window.addEventListener('timer:resume', onResume)
     return () => window.removeEventListener('timer:resume', onResume)
   }, [running]) // eslint-disable-line react-hooks/exhaustive-deps
+
+  // Fetch the user's recent descriptions for autocomplete.
+  // Runs on mount and after any entry is saved so new descriptions appear immediately.
+  const fetchSuggestions = useCallback(async () => {
+    if (!user) return
+    const { data } = await supabase
+      .from('time_entries')
+      .select('description, project_id, project:projects(id, name, color)')
+      .eq('user_id', user.id)
+      .eq('is_running', false)
+      .neq('description', '')
+      .order('start_time', { ascending: false })
+      .limit(200)
+    if (!data) return
+    const seen    = new Set()
+    const deduped = []
+    for (const e of data) {
+      const d = (e.description ?? '').trim()
+      if (!d || seen.has(d.toLowerCase())) continue
+      seen.add(d.toLowerCase())
+      deduped.push({ description: d, projectId: e.project_id, project: e.project ?? null })
+    }
+    setSuggestions(deduped)
+  }, [user])
+
+  useEffect(() => { fetchSuggestions() }, [fetchSuggestions])
+
+  useEffect(() => {
+    const handler = () => fetchSuggestions()
+    window.addEventListener('timeentry:saved', handler)
+    return () => window.removeEventListener('timeentry:saved', handler)
+  }, [fetchSuggestions])
+
+  // Suggestions filtered by current description input (case-insensitive contains, max 8).
+  const filteredSuggestions = useMemo(() => {
+    const q = description.trim().toLowerCase()
+    if (!q) return []
+    return suggestions
+      .filter(s => s.description.toLowerCase().includes(q))
+      .slice(0, 8)
+  }, [suggestions, description])
+
+  function selectSuggestion(s) {
+    setDescription(s.description)
+    if (s.projectId) setProjectId(s.projectId)
+    setAcOpen(false)
+    setAcIndex(-1)
+  }
+
+  function handleDescriptionChange(e) {
+    setDescription(e.target.value)
+    setAcIndex(-1)
+    setAcOpen(true)
+  }
+
+  function handleDescriptionKeyDown(e) {
+    const open = acOpen && filteredSuggestions.length > 0
+    if (open) {
+      if (e.key === 'ArrowDown') {
+        e.preventDefault()
+        setAcIndex(i => Math.min(i + 1, filteredSuggestions.length - 1))
+        return
+      }
+      if (e.key === 'ArrowUp') {
+        e.preventDefault()
+        setAcIndex(i => Math.max(i - 1, -1))
+        return
+      }
+      if (e.key === 'Enter' && acIndex >= 0) {
+        e.preventDefault()
+        selectSuggestion(filteredSuggestions[acIndex])
+        return
+      }
+      if (e.key === 'Escape') {
+        setAcOpen(false)
+        setAcIndex(-1)
+        return
+      }
+    }
+    if (e.key === 'Enter' && !running) handleStart()
+  }
 
   async function fetchRunningEntry() {
     const { data } = await supabase
@@ -265,14 +364,46 @@ export default function TimerWidget() {
 
   return (
     <div className="border-b border-slate-200 bg-surface flex items-center flex-shrink-0 h-14 px-3">
-      <input
-        type="text"
-        placeholder="What are you working on?"
-        value={description}
-        onChange={e => setDescription(e.target.value)}
-        onKeyDown={e => e.key === 'Enter' && !running && handleStart()}
-        className="flex-1 text-sm outline-none placeholder-slate-400 text-slate-800 min-w-0 h-full px-3 dark:!bg-transparent"
-      />
+
+      {/* Description input with autocomplete */}
+      <div ref={descRef} className="relative flex-1 min-w-0 h-full flex items-center">
+        <input
+          type="text"
+          placeholder="What are you working on?"
+          value={description}
+          onChange={handleDescriptionChange}
+          onFocus={() => { if (description.trim()) setAcOpen(true) }}
+          onKeyDown={handleDescriptionKeyDown}
+          className="w-full text-sm outline-none placeholder-slate-400 text-slate-800 h-full px-3 dark:!bg-transparent"
+        />
+
+        {acOpen && filteredSuggestions.length > 0 && (
+          <div className="absolute top-full left-0 right-0 bg-surface border border-slate-200 rounded-xl shadow-lg z-50 overflow-hidden">
+            {filteredSuggestions.map((s, i) => (
+              <button
+                key={i}
+                onMouseDown={e => { e.preventDefault(); selectSuggestion(s) }}
+                className={`w-full flex items-center gap-2.5 px-3 py-2 text-sm text-left transition-colors ${
+                  i === acIndex
+                    ? 'bg-orchid-50 text-orchid-900'
+                    : 'text-slate-700 hover:bg-slate-50'
+                }`}
+              >
+                <span
+                  className="w-2 h-2 rounded-full flex-shrink-0"
+                  style={{ backgroundColor: s.project?.color ?? '#cbd5e1' }}
+                />
+                <span className="flex-1 truncate">{s.description}</span>
+                {s.project && (
+                  <span className="text-xs text-slate-400 shrink-0 truncate max-w-[8rem]">
+                    {s.project.name}
+                  </span>
+                )}
+              </button>
+            ))}
+          </div>
+        )}
+      </div>
 
       <div className="w-px h-8 bg-slate-200 mx-1 flex-shrink-0" />
 
