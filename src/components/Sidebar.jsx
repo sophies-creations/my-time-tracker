@@ -49,7 +49,7 @@ export default function Sidebar() {
             onClick={() => setCollapsed(c => !c)}
             title="Expand sidebar"
             aria-label="Expand sidebar"
-            className="w-8 h-8 rounded-lg flex items-center justify-center text-white/60 hover:bg-white/10 hover:text-white transition-colors"
+            className="w-8 h-8 rounded-lg flex items-center justify-center text-[#4A4350] dark:text-white/60 hover:bg-black/10 dark:hover:bg-white/10 hover:text-[#2A2430] dark:hover:text-white transition-colors"
           >
             <Menu size={16} />
           </button>
@@ -59,13 +59,13 @@ export default function Sidebar() {
               <div className="w-8 h-8 bg-orchid-600 rounded-lg flex items-center justify-center flex-shrink-0">
                 <Clock size={15} className="text-white" />
               </div>
-              <span className="text-base font-bold text-white tracking-tight">Sophiefy</span>
+              <span className="text-base font-bold text-[#2A2430] dark:text-white tracking-tight">Sophiefy</span>
             </div>
             <button
               onClick={() => setCollapsed(c => !c)}
               title="Collapse sidebar"
               aria-label="Collapse sidebar"
-              className="w-8 h-8 rounded-lg flex items-center justify-center text-white/60 hover:bg-white/10 hover:text-white transition-colors flex-shrink-0"
+              className="w-8 h-8 rounded-lg flex items-center justify-center text-[#4A4350] dark:text-white/60 hover:bg-black/10 dark:hover:bg-white/10 hover:text-[#2A2430] dark:hover:text-white transition-colors flex-shrink-0"
             >
               <Menu size={16} />
             </button>
@@ -83,8 +83,8 @@ export default function Sidebar() {
             className={({ isActive }) =>
               `flex items-center ${collapsed ? 'justify-center' : 'gap-3'} px-3 py-2.5 rounded-lg text-sm font-medium transition-colors ${
                 isActive
-                  ? 'bg-orchid-600 text-white'
-                  : 'text-white/65 hover:bg-white/10 hover:text-white'
+                  ? 'bg-[#6E4D67] dark:bg-orchid-600 text-white'
+                  : 'text-[#4A4350] dark:text-white/65 hover:bg-black/10 dark:hover:bg-white/10 hover:text-[#2A2430] dark:hover:text-white'
               }`
             }
           >

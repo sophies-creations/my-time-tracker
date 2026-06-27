@@ -19,8 +19,8 @@
   --color-surface: white;
 
   /* Sidebar tokens — swap in dark mode */
-  --color-sidebar: #A2899F;
-  --color-sidebar-border: #8a6e87;
+  --color-sidebar: #DEDAE2;
+  --color-sidebar-border: #c8c2ce;
 }
 
 /* ─── Dark mode overrides ─────────────────────────────────────────── */

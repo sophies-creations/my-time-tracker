@@ -57,9 +57,7 @@ function MemberBar({ segments, total, max }) {
 export default function Dashboard() {
   const { user, isManager, isAdmin } = useAuth()
   const [scope, setScope]   = useState('me')
-  const initialFrom = startOfWeek(new Date(), WEEK_OPT)
-  const initialTo   = endOfWeek(new Date(), WEEK_OPT)
-  const [range, setRange]   = useState({ from: initialFrom, to: initialTo })
+  const [range, setRange]   = useState({ from: startOfDay(new Date()), to: startOfDay(new Date()) })
   const [allEntries, setAllEntries] = useState([])
   const [members, setMembers] = useState([])
   const [latest, setLatest]   = useState({})

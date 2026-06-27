@@ -331,6 +331,16 @@ export default function Calendar() {
 
 // ─── ScheduleCell ─────────────────────────────────────────────────────────────
 
+function normalizeTimeRange(value) {
+  const trimmed = value.trim()
+  const match = trimmed.match(/^(\d{1,2})-(\d{1,2})$/)
+  if (!match) return trimmed
+  const h1 = parseInt(match[1], 10)
+  const h2 = parseInt(match[2], 10)
+  if (h1 > 23 || h2 > 23) return trimmed
+  return `${String(h1).padStart(2, '0')}:00-${String(h2).padStart(2, '0')}:00`
+}
+
 function ScheduleCell({ content, isManager, onSave }) {
   const [editing, setEditing] = useState(false)
   const [draft, setDraft]     = useState('')
@@ -348,7 +358,8 @@ function ScheduleCell({ content, isManager, onSave }) {
 
   function commit() {
     setEditing(false)
-    if (draft.trim() !== content.trim()) onSave(draft)
+    const normalized = normalizeTimeRange(draft)
+    if (normalized.trim() !== content.trim()) onSave(normalized)
   }
 
   function cancel() {
@@ -375,7 +386,7 @@ function ScheduleCell({ content, isManager, onSave }) {
 
   if (editing) {
     return (
-      <div className="relative w-full min-h-[48px]">
+      <div className="relative w-full h-[48px]">
         <input
           ref={inputRef}
           value={draft}
@@ -385,7 +396,7 @@ function ScheduleCell({ content, isManager, onSave }) {
             if (e.key === 'Escape') cancel()
           }}
           onBlur={commit}
-          className="w-full min-h-[48px] px-2 py-1.5 text-xs text-center text-slate-800 bg-surface border-2 border-orchid-400 outline-none"
+          className="absolute inset-0 px-2 text-xs text-center text-slate-800 bg-surface border-2 border-orchid-400 outline-none"
         />
         <div className="absolute top-0.5 right-0.5 grid grid-cols-2 gap-0.5 z-10">
           <button
@@ -412,7 +423,7 @@ function ScheduleCell({ content, isManager, onSave }) {
   return (
     <div
       onClick={startEdit}
-      className={`group/cell relative w-full min-h-[48px] flex items-center justify-center ${cellBg} ${isManager ? 'cursor-text' : ''}`}
+      className={`group/cell relative w-full h-[48px] flex items-center justify-center ${cellBg} ${isManager ? 'cursor-text' : ''}`}
     >
       <span className={`text-xs leading-snug ${textColor}`}>{content}</span>
       {isManager && !content && (

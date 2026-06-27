@@ -175,9 +175,7 @@ export default function Reports() {
   const { clients } = useData()
   const [tab, setTab] = useState('summary')
 
-  const initialFrom = startOfWeek(new Date(), WEEK_OPT)
-  const initialTo   = endOfWeek(new Date(), WEEK_OPT)
-  const [range, setRange] = useState({ from: initialFrom, to: initialTo })
+  const [range, setRange] = useState({ from: startOfDay(new Date()), to: startOfDay(new Date()) })
 
   const [filterProjects,    setFilterProjects]    = useState([])
   const [filterUsers,       setFilterUsers]       = useState([])
