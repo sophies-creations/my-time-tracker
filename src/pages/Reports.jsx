@@ -604,20 +604,28 @@ export default function Reports() {
             align="right"
           />
           {isAdmin && (
-            <button
-              onClick={() => setAdminModal({ entry: null })}
-              className="flex items-center gap-2 bg-orchid-600 hover:bg-orchid-700 text-white px-4 py-2 rounded-lg text-sm font-medium transition-colors"
-            >
-              <Plus size={16} />
-              Add entry
-            </button>
+            <div className="relative group">
+              <button
+                onClick={() => setAdminModal({ entry: null })}
+                className="flex items-center justify-center size-9 bg-orchid-600 hover:bg-orchid-700 text-white rounded-lg transition-colors"
+              >
+                <Plus size={16} />
+              </button>
+              <span className="pointer-events-none absolute top-full left-1/2 -translate-x-1/2 mt-1.5 px-2 py-1 rounded-md text-xs font-medium whitespace-nowrap bg-slate-900 text-white opacity-0 group-hover:opacity-100 transition-opacity z-50">
+                Add entry
+              </span>
+            </div>
           )}
-          <button onClick={handleExport}
-            className="flex items-center gap-2 bg-emerald-600 hover:bg-emerald-700 text-white px-4 py-2 rounded-lg text-sm font-medium transition-colors"
-          >
-            <Download size={16} />
-            Export Excel
-          </button>
+          <div className="relative group">
+            <button onClick={handleExport}
+              className="flex items-center justify-center size-9 bg-emerald-600 hover:bg-emerald-700 text-white rounded-lg transition-colors"
+            >
+              <Download size={16} />
+            </button>
+            <span className="pointer-events-none absolute top-full left-1/2 -translate-x-1/2 mt-1.5 px-2 py-1 rounded-md text-xs font-medium whitespace-nowrap bg-slate-900 text-white opacity-0 group-hover:opacity-100 transition-opacity z-50">
+              Export Excel
+            </span>
+          </div>
         </div>
       </div>
 
