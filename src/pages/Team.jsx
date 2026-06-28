@@ -1,5 +1,5 @@
 import { useState, useEffect, useMemo } from 'react'
-import { UserPlus, Copy, Check, Trash2, UserX, UserCheck, Pencil, X, Eye, EyeOff } from 'lucide-react'
+import { UserPlus, Copy, Check, Trash2, UserX, UserCheck, Pencil, X, Eye, EyeOff, KeyRound } from 'lucide-react'
 import { supabase } from '../lib/supabase'
 import { useAuth } from '../contexts/AuthContext'
 import InviteModal from '../components/InviteModal'
@@ -23,6 +23,7 @@ export default function Team() {
   const [copiedId, setCopiedId]         = useState(null)
   const [editingName, setEditingName]   = useState(null) // { memberId, value }
   const [showHidden, setShowHidden]     = useState(false)
+  const [setPwdTarget, setSetPwdTarget] = useState(null) // { id, full_name, email }
 
   useEffect(() => {
     fetchMembers()
@@ -325,6 +326,16 @@ export default function Team() {
                   </button>
                 )}
 
+                {isAdmin && !isMe && (
+                  <button
+                    onClick={() => setSetPwdTarget({ id: member.id, full_name: member.full_name, email: member.email })}
+                    title="Set password"
+                    className="p-1.5 rounded-lg text-slate-400 hover:text-orchid-600 hover:bg-orchid-50 transition-colors"
+                  >
+                    <KeyRound size={15} />
+                  </button>
+                )}
+
                 {isManager && !isMe && (
                   <button
                     onClick={() => toggleRowHidden(member.id, isHidden)}
@@ -417,6 +428,121 @@ export default function Team() {
           onSaved={() => { setShowInvite(false); fetchInvites() }}
         />
       )}
+
+      {setPwdTarget && (
+        <SetPasswordModal
+          target={setPwdTarget}
+          onClose={() => setSetPwdTarget(null)}
+        />
+      )}
+    </div>
+  )
+}
+
+function SetPasswordModal({ target, onClose }) {
+  const [password, setPassword]   = useState('')
+  const [confirm, setConfirm]     = useState('')
+  const [showPwd, setShowPwd]     = useState(false)
+  const [saving, setSaving]       = useState(false)
+  const [error, setError]         = useState('')
+
+  async function handleSubmit(e) {
+    e.preventDefault()
+    setError('')
+    if (password.length < 6) { setError('Password must be at least 6 characters'); return }
+    if (password !== confirm)  { setError('Passwords do not match'); return }
+    setSaving(true)
+    try {
+      const { data: { session } } = await supabase.auth.getSession()
+      const res = await fetch(
+        `${import.meta.env.VITE_SUPABASE_URL}/functions/v1/admin-set-password`,
+        {
+          method: 'POST',
+          headers: {
+            'Content-Type': 'application/json',
+            Authorization: `Bearer ${session.access_token}`,
+            apikey: import.meta.env.VITE_SUPABASE_ANON_KEY,
+          },
+          body: JSON.stringify({ targetUserId: target.id, password }),
+        }
+      )
+      const json = await res.json()
+      if (!res.ok) throw new Error(json.error || 'Failed to set password')
+      toast.success(`Password set for ${target.full_name || target.email}`)
+      onClose()
+    } catch (err) {
+      setError(err.message || 'Something went wrong')
+    } finally {
+      setSaving(false)
+    }
+  }
+
+  return (
+    <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-black/40" onClick={e => e.target === e.currentTarget && onClose()}>
+      <div className="bg-white rounded-2xl shadow-xl w-full max-w-sm p-6">
+        <div className="flex items-center justify-between mb-4">
+          <div>
+            <h2 className="text-base font-semibold text-slate-800">Set password</h2>
+            <p className="text-xs text-slate-400 mt-0.5 truncate max-w-[220px]">
+              {target.full_name || target.email}
+            </p>
+          </div>
+          <button onClick={onClose} className="p-1.5 text-slate-400 hover:text-slate-600 rounded-lg hover:bg-slate-100">
+            <X size={16} />
+          </button>
+        </div>
+
+        <form onSubmit={handleSubmit} className="space-y-3">
+          <div className="relative">
+            <input
+              autoFocus
+              type={showPwd ? 'text' : 'password'}
+              value={password}
+              onChange={e => { setPassword(e.target.value); setError('') }}
+              placeholder="New password (min 6 chars)"
+              minLength={6}
+              required
+              className="w-full border border-slate-200 rounded-lg px-3 py-2.5 pr-9 text-sm outline-none focus:ring-2 focus:ring-orchid-500"
+            />
+            <button
+              type="button"
+              onClick={() => setShowPwd(v => !v)}
+              className="absolute right-2.5 top-1/2 -translate-y-1/2 text-slate-400 hover:text-slate-600"
+              tabIndex={-1}
+            >
+              {showPwd ? <EyeOff size={14} /> : <Eye size={14} />}
+            </button>
+          </div>
+
+          <input
+            type={showPwd ? 'text' : 'password'}
+            value={confirm}
+            onChange={e => { setConfirm(e.target.value); setError('') }}
+            placeholder="Confirm password"
+            required
+            className="w-full border border-slate-200 rounded-lg px-3 py-2.5 text-sm outline-none focus:ring-2 focus:ring-orchid-500"
+          />
+
+          {error && <p className="text-xs text-red-600 font-medium">{error}</p>}
+
+          <div className="flex gap-2 pt-1">
+            <button
+              type="button"
+              onClick={onClose}
+              className="flex-1 px-4 py-2.5 text-sm font-medium text-slate-700 bg-slate-100 hover:bg-slate-200 rounded-lg transition-colors"
+            >
+              Cancel
+            </button>
+            <button
+              type="submit"
+              disabled={saving || !password || !confirm}
+              className="flex-1 px-4 py-2.5 text-sm font-medium text-white bg-orchid-600 hover:bg-orchid-700 rounded-lg disabled:opacity-50 transition-colors"
+            >
+              {saving ? 'Saving…' : 'Set password'}
+            </button>
+          </div>
+        </form>
+      </div>
     </div>
   )
 }
