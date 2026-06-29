@@ -23,6 +23,7 @@ export default function Team() {
   const [copiedId, setCopiedId]         = useState(null)
   const [editingName, setEditingName]   = useState(null) // { memberId, value }
   const [showHidden, setShowHidden]     = useState(false)
+  const [statusFilter, setStatusFilter] = useState('active')
   const [setPwdTarget, setSetPwdTarget] = useState(null) // { id, full_name, email }
 
   useEffect(() => {
@@ -137,13 +138,19 @@ export default function Team() {
     window.dispatchEvent(new CustomEvent('sophiefy:approvals-changed'))
   }
 
-  const hiddenCount = useMemo(() => members.filter(m => m.schedule_hidden).length, [members])
+  const filteredMembers = useMemo(() => {
+    if (statusFilter === 'active')   return members.filter(m => m.active !== false)
+    if (statusFilter === 'inactive') return members.filter(m => m.active === false)
+    return members
+  }, [members, statusFilter])
+
+  const hiddenCount = useMemo(() => filteredMembers.filter(m => m.schedule_hidden).length, [filteredMembers])
 
   // Group by role (owner→admin→manager→member), alphabetical within each group.
   // Emits separator and member rows; filters hidden unless showHidden is on.
   const groupedMembers = useMemo(() => {
     const byRole = {}
-    for (const m of members) {
+    for (const m of filteredMembers) {
       const r = m.role ?? 'member'
       if (!byRole[r]) byRole[r] = []
       byRole[r].push(m)
@@ -157,7 +164,7 @@ export default function Team() {
       group.forEach(m => rows.push({ type: 'member', member: m, isHidden: !!m.schedule_hidden }))
     }
     return rows
-  }, [members, showHidden])
+  }, [filteredMembers, showHidden])
 
   const initials = m => (m.full_name || m.email).slice(0, 1).toUpperCase()
 
@@ -166,6 +173,16 @@ export default function Team() {
       <div className="flex items-center justify-between mb-6 gap-3 flex-wrap">
         <h1 className="text-2xl font-bold text-slate-800">Team</h1>
         <div className="flex items-center gap-2">
+          <select
+            value={statusFilter}
+            onChange={e => setStatusFilter(e.target.value)}
+            className="border border-slate-200 dark:border-slate-600 rounded-lg px-3 py-1.5 text-xs text-slate-700 dark:text-slate-200 bg-white dark:bg-slate-700 outline-none focus:ring-2 focus:ring-orchid-500"
+          >
+            <option value="active">Active</option>
+            <option value="inactive">Inactive</option>
+            <option value="all">All</option>
+          </select>
+
           {isManager && hiddenCount > 0 && (
             <button
               onClick={() => setShowHidden(v => !v)}
