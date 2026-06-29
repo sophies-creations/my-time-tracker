@@ -75,7 +75,7 @@ export default function TimerWidget() {
   // Mirror the running timer into the browser tab title.
   useEffect(() => {
     if (running) {
-      document.title = `🔴 ${formatDuration(elapsed)} · Sophiefy`
+      document.title = `${formatDuration(elapsed)} · Sophiefy`
     } else {
       document.title = 'Sophiefy'
     }
@@ -536,7 +536,7 @@ export default function TimerWidget() {
 
       <div className="flex items-center justify-center gap-1.5 w-[5.5rem] flex-shrink-0">
         {running && (
-          <span className="w-2 h-2 rounded-full bg-red-500 flex-shrink-0 animate-pulse" />
+          <Play size={12} className="text-red-500 flex-shrink-0" fill="currentColor" />
         )}
         <span className="font-mono text-sm font-semibold text-slate-700 tabular-nums">
           {formatDuration(running ? elapsed : 0)}
