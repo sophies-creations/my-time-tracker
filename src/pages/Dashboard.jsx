@@ -4,7 +4,7 @@ import {
   startOfDay, endOfDay, isSameDay, formatDistanceToNowStrict,
 } from 'date-fns'
 import { Square } from 'lucide-react'
-import { supabase } from '../lib/supabase'
+import { supabase, fetchAllPages } from '../lib/supabase'
 import { useAuth } from '../contexts/AuthContext'
 import { formatDuration } from '../utils/formatters'
 import DateRangePicker from '../components/DateRangePicker'
@@ -68,18 +68,18 @@ export default function Dashboard() {
     if (!user) return
     setLoading(true)
     try {
-      // Mirror the Tracker fetch — no DB date filter. We pull a wide
-      // window of stopped entries and apply the range as a client-side
-      // filter so we never have timezone-string drift.
+      const startISO = startOfDay(range.from).toISOString()
+      const endISO   = endOfDay(range.to ?? range.from).toISOString()
       let entryQ = supabase
         .from('time_entries')
         .select('id, duration, start_time, end_time, is_running, description, user_id, project_id, project:projects(id, name, color, client_id, client:clients!projects_client_id_fkey(id, name))')
         .eq('is_running', false)
+        .gte('start_time', startISO)
+        .lte('start_time', endISO)
         .order('start_time', { ascending: false })
-        .limit(2000)
       if (scope === 'me') entryQ = entryQ.eq('user_id', user.id)
 
-      const jobs = [entryQ]
+      const jobs = [fetchAllPages(entryQ)]
       if (scope === 'team') {
         jobs.push(
           supabase.from('profiles').select('id, full_name, email, role').eq('active', true).neq('role', 'client'),
@@ -91,9 +91,7 @@ export default function Dashboard() {
         )
       }
       const results = await Promise.all(jobs)
-      const entRes = results[0]
-      if (entRes.error) throw entRes.error
-      setAllEntries(entRes.data ?? [])
+      setAllEntries(results[0])
 
       if (scope === 'team') {
         setMembers(results[1]?.data ?? [])
@@ -107,7 +105,7 @@ export default function Dashboard() {
     } finally {
       setLoading(false)
     }
-  }, [user, scope])
+  }, [user, scope, range])
 
   useEffect(() => { fetchAll() }, [fetchAll])
 

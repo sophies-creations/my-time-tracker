@@ -4,7 +4,7 @@ import {
   eachDayOfInterval, startOfDay, endOfDay, startOfMonth,
 } from 'date-fns'
 import { Download, ChevronLeft, ChevronRight, ChevronDown, Pencil, Trash2, Plus } from 'lucide-react'
-import { supabase } from '../lib/supabase'
+import { supabase, fetchAllPages } from '../lib/supabase'
 import { useAuth } from '../contexts/AuthContext'
 import { useData } from '../contexts/DataContext'
 import { formatDuration } from '../utils/formatters'
@@ -228,11 +228,10 @@ export default function Reports() {
       if (filterProjects.length) q = q.in('project_id', filterProjects)
       if (filterUsers.length)    q = q.in('user_id', filterUsers)
       if (filterDescription.trim()) q = q.ilike('description', `%${filterDescription.trim()}%`)
-      const { data, error } = await q
-      if (error) throw error
+      const allData = await fetchAllPages(q)
       const filtered = filterClients.length
-        ? (data ?? []).filter(e => filterClients.includes(e.project?.client_id))
-        : (data ?? [])
+        ? allData.filter(e => filterClients.includes(e.project?.client_id))
+        : allData
       setEntries(filtered)
     } catch (err) {
       console.error('[Reports] fetchEntries error:', err)

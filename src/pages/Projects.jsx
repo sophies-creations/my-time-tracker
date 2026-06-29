@@ -1,6 +1,6 @@
 import { useState, useEffect, useMemo } from 'react'
 import { Plus, Pencil, Archive, ArchiveRestore, Globe, Lock, Star, Search, X } from 'lucide-react'
-import { supabase } from '../lib/supabase'
+import { supabase, fetchAllPages } from '../lib/supabase'
 import { useAuth } from '../contexts/AuthContext'
 import { useData } from '../contexts/DataContext'
 import { formatDuration } from '../utils/formatters'
@@ -65,13 +65,14 @@ export default function Projects() {
   }
 
   async function fetchTimeTotals() {
-    const { data } = await supabase
+    const q = supabase
       .from('time_entries')
       .select('project_id, duration')
       .eq('is_running', false)
       .not('project_id', 'is', null)
+    const rows = await fetchAllPages(q)
     const totals = {}
-    for (const row of data ?? []) {
+    for (const row of rows) {
       totals[row.project_id] = (totals[row.project_id] ?? 0) + (row.duration ?? 0)
     }
     setTimeTotals(totals)

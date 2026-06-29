@@ -6,7 +6,7 @@ import {
   startOfYear, endOfYear,
 } from 'date-fns'
 import { Clock, LogOut, ChevronDown, Check, User } from 'lucide-react'
-import { supabase } from '../lib/supabase'
+import { supabase, fetchAllPages } from '../lib/supabase'
 import { useAuth } from '../contexts/AuthContext'
 import { formatDuration } from '../utils/formatters'
 import toast from 'react-hot-toast'
@@ -182,9 +182,8 @@ export default function ClientPortal() {
         q = q.in('project_id', filterProjects)
       }
 
-      const { data, error } = await q
-      if (error) throw error
-      setEntries(data ?? [])
+      const data = await fetchAllPages(q)
+      setEntries(data)
     } catch (err) {
       console.error('[ClientPortal] fetchEntries:', err)
       toast.error('Failed to load data')
