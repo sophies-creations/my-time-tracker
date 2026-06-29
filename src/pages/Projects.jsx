@@ -23,7 +23,7 @@ const ACCESS_OPTIONS = [
 const NO_CLIENT = '_none'
 
 export default function Projects() {
-  const { isAdmin, isManager } = useAuth()
+  const { isAdmin, isOwner } = useAuth()
   const { clients, favoriteIds, toggleFavorite } = useData()
   const [projects, setProjects]     = useState([])
   const [timeTotals, setTimeTotals] = useState({})
@@ -150,7 +150,7 @@ export default function Projects() {
     return [...favs, ...rest]
   }, [visible, favoriteIds])
 
-  const canCreate = isAdmin || isManager
+  const canCreate = isAdmin || isOwner
 
   const statusLabel = STATUS_OPTIONS.find(o => o.value === stagedStatus)?.label ?? ''
   const accessLabel = ACCESS_OPTIONS.find(o => o.value === stagedAccess)?.label ?? ''

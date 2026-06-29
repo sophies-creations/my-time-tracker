@@ -505,29 +505,31 @@ export default function TimerWidget() {
               )}
             </div>
 
-            <div className="border-t border-slate-100 mt-1 pt-1 px-2 pb-1">
-              <div className="flex items-center gap-1">
-                <input
-                  type="text"
-                  value={newProjectName}
-                  onChange={e => setNewProjectName(e.target.value)}
-                  onKeyDown={e => {
-                    if (e.key === 'Enter') { e.preventDefault(); createProject() }
-                    if (e.key === 'Escape') { setNewProjectName(''); setProjectOpen(false) }
-                  }}
-                  placeholder="New project…"
-                  className="flex-1 text-sm px-2 py-1.5 rounded-lg border border-slate-200 outline-none focus:border-orchid-400 placeholder-slate-400 min-w-0"
-                />
-                <button
-                  onClick={createProject}
-                  disabled={!newProjectName.trim() || creatingProject}
-                  title="Create project"
-                  className="flex-shrink-0 w-7 h-7 rounded-lg flex items-center justify-center bg-orchid-600 text-white hover:bg-orchid-700 disabled:opacity-40 disabled:cursor-not-allowed"
-                >
-                  <Plus size={14} />
-                </button>
+            {(isAdmin || isOwner) && (
+              <div className="border-t border-slate-100 mt-1 pt-1 px-2 pb-1">
+                <div className="flex items-center gap-1">
+                  <input
+                    type="text"
+                    value={newProjectName}
+                    onChange={e => setNewProjectName(e.target.value)}
+                    onKeyDown={e => {
+                      if (e.key === 'Enter') { e.preventDefault(); createProject() }
+                      if (e.key === 'Escape') { setNewProjectName(''); setProjectOpen(false) }
+                    }}
+                    placeholder="New project…"
+                    className="flex-1 text-sm px-2 py-1.5 rounded-lg border border-slate-200 outline-none focus:border-orchid-400 placeholder-slate-400 min-w-0"
+                  />
+                  <button
+                    onClick={createProject}
+                    disabled={!newProjectName.trim() || creatingProject}
+                    title="Create project"
+                    className="flex-shrink-0 w-7 h-7 rounded-lg flex items-center justify-center bg-orchid-600 text-white hover:bg-orchid-700 disabled:opacity-40 disabled:cursor-not-allowed"
+                  >
+                    <Plus size={14} />
+                  </button>
+                </div>
               </div>
-            </div>
+            )}
           </div>
         )}
       </div>
