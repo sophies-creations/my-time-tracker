@@ -75,7 +75,7 @@ export default function TimerWidget() {
   // Mirror the running timer into the browser tab title.
   useEffect(() => {
     if (running) {
-      document.title = `▶ ${formatDuration(elapsed)} · Sophiefy`
+      document.title = `🔴 ${formatDuration(elapsed)} · Sophiefy`
     } else {
       document.title = 'Sophiefy'
     }
