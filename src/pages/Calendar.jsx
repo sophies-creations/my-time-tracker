@@ -52,7 +52,7 @@ export default function Calendar() {
     // Hidden rows (schedule_hidden=true) are filtered in roleGroups below;
     // managers can still reveal them via the showHidden toggle.
     const profileQuery = supabase.from('profiles')
-      .select('id, full_name, email, role, schedule_hidden')
+      .select('id, full_name, email, role, schedule_hidden, team')
       .neq('role', 'client').eq('active', true).order('full_name')
 
     const [membersRes, cellsRes, requestsRes] = await Promise.all([
@@ -121,22 +121,36 @@ export default function Calendar() {
     window.dispatchEvent(new CustomEvent('sophiefy:approvals-changed'))
   }
 
-  // Members first, then staff (owner/admin/manager). Hidden rows filtered unless showHidden.
+  // Team sections first (orchid separators), then Members/Staff for untagged (slate separators).
   const roleGroups = useMemo(() => {
-    const memberList = members.filter(m => m.role === 'member')
-    const staffList  = members.filter(m => STAFF_ROLES.includes(m.role))
+    const tagged   = members.filter(m => m.team)
+    const untagged = members.filter(m => !m.team)
     const rows = []
+
+    const teamNames = [...new Set(tagged.map(m => m.team))].sort()
+    for (const team of teamNames) {
+      const teamMembers = tagged
+        .filter(m => m.team === team)
+        .sort((a, b) => (a.full_name ?? a.email).localeCompare(b.full_name ?? b.email))
+      const visible = showHidden ? teamMembers : teamMembers.filter(m => !m.schedule_hidden)
+      if (!visible.length) continue
+      rows.push({ type: 'separator', kind: 'team', label: team })
+      visible.forEach(m => rows.push({ type: 'member', member: m, isHidden: !!m.schedule_hidden }))
+    }
+
+    const memberList = untagged.filter(m => m.role === 'member')
+    const staffList  = untagged.filter(m => STAFF_ROLES.includes(m.role))
 
     const visibleMembers = showHidden ? memberList : memberList.filter(m => !m.schedule_hidden)
     if (visibleMembers.length) {
-      rows.push({ type: 'separator', label: 'Members' })
+      rows.push({ type: 'separator', kind: 'role', label: 'Members' })
       visibleMembers.forEach(m => rows.push({ type: 'member', member: m, isHidden: !!m.schedule_hidden }))
     }
 
     if (staffList.length) {
       const visibleStaff = showHidden ? staffList : staffList.filter(m => !m.schedule_hidden)
       if (visibleStaff.length) {
-        rows.push({ type: 'separator', label: 'Staff' })
+        rows.push({ type: 'separator', kind: 'role', label: 'Staff' })
         visibleStaff.forEach(m => rows.push({ type: 'member', member: m, isHidden: !!m.schedule_hidden }))
       }
     }
@@ -233,11 +247,16 @@ export default function Calendar() {
               )}
               {roleGroups.map((row, i) => {
                 if (row.type === 'separator') {
+                  const isTeam = row.kind === 'team'
                   return (
-                    <tr key={`sep-${row.label}`}>
+                    <tr key={isTeam ? `sep-team-${row.label}` : `sep-role-${row.label}`}>
                       <td
                         colSpan={8}
-                        className="px-4 py-1.5 text-[10px] font-bold uppercase tracking-widest text-slate-400 border-b border-slate-200 bg-slate-50"
+                        className={`px-4 py-1.5 text-[10px] font-bold uppercase tracking-widest border-b ${
+                          isTeam
+                            ? 'text-orchid-500 bg-orchid-50/50 border-orchid-100'
+                            : 'text-slate-400 bg-slate-50 border-slate-200'
+                        }`}
                       >
                         {row.label}
                       </td>

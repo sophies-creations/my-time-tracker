@@ -22,6 +22,7 @@ export default function Team() {
   const [showInvite, setShowInvite]     = useState(false)
   const [copiedId, setCopiedId]         = useState(null)
   const [editingName, setEditingName]   = useState(null) // { memberId, value }
+  const [editingTeam, setEditingTeam]   = useState(null) // { memberId, value }
   const [showHidden, setShowHidden]     = useState(false)
   const [statusFilter, setStatusFilter] = useState('active')
   const [setPwdTarget, setSetPwdTarget] = useState(null) // { id, full_name, email }
@@ -126,6 +127,17 @@ export default function Team() {
     fetchMembers()
   }
 
+  async function saveTeam(memberId, value) {
+    const { error } = await supabase.rpc('owner_set_team', {
+      p_user_id: memberId,
+      p_team:    value,
+    })
+    if (error) { toast.error(error.message ?? 'Update failed'); return }
+    toast.success(value.trim() ? `Team set to "${value.trim()}"` : 'Team tag cleared')
+    setEditingTeam(null)
+    fetchMembers()
+  }
+
   async function reviewNameRequest(id, approve) {
     const { error } = await supabase.rpc('review_username_request', {
       p_request_id: id,
@@ -146,23 +158,43 @@ export default function Team() {
 
   const hiddenCount = useMemo(() => filteredMembers.filter(m => m.schedule_hidden).length, [filteredMembers])
 
-  // Group by role (owner→admin→manager→member), alphabetical within each group.
-  // Emits separator and member rows; filters hidden unless showHidden is on.
+  // Group by team tag first, then by role for untagged members.
+  // Team sections (orchid separators) appear before role sections (slate separators).
   const groupedMembers = useMemo(() => {
+    const tagged   = filteredMembers.filter(m => m.team)
+    const untagged = filteredMembers.filter(m => !m.team)
+    const rows = []
+
+    // One section per unique team name, alphabetical; members sorted by role then alpha
+    const teamNames = [...new Set(tagged.map(m => m.team))].sort()
+    for (const team of teamNames) {
+      const teamMembers = tagged
+        .filter(m => m.team === team)
+        .sort((a, b) => {
+          const ri = ROLE_ORDER.indexOf(a.role) - ROLE_ORDER.indexOf(b.role)
+          return ri !== 0 ? ri : (a.full_name ?? a.email).localeCompare(b.full_name ?? b.email)
+        })
+      const visible = showHidden ? teamMembers : teamMembers.filter(m => !m.schedule_hidden)
+      if (!visible.length) continue
+      rows.push({ type: 'separator', kind: 'team', label: team })
+      visible.forEach(m => rows.push({ type: 'member', member: m, isHidden: !!m.schedule_hidden }))
+    }
+
+    // Role sections for untagged members
     const byRole = {}
-    for (const m of filteredMembers) {
+    for (const m of untagged) {
       const r = m.role ?? 'member'
       if (!byRole[r]) byRole[r] = []
       byRole[r].push(m)
     }
-    const rows = []
     for (const role of ROLE_ORDER) {
       if (!byRole[role]?.length) continue
       const group = showHidden ? byRole[role] : byRole[role].filter(m => !m.schedule_hidden)
       if (!group.length) continue
-      rows.push({ type: 'separator', role, label: ROLE_LABELS[role] ?? role })
+      rows.push({ type: 'separator', kind: 'role', role, label: ROLE_LABELS[role] ?? role })
       group.forEach(m => rows.push({ type: 'member', member: m, isHidden: !!m.schedule_hidden }))
     }
+
     return rows
   }, [filteredMembers, showHidden])
 
@@ -225,12 +257,13 @@ export default function Team() {
 
         {groupedMembers.map(row => {
           if (row.type === 'separator') {
+            const isTeam = row.kind === 'team'
             return (
               <div
-                key={`sep-${row.role}`}
-                className="px-5 py-1.5 bg-slate-50 border-b border-slate-100"
+                key={isTeam ? `sep-team-${row.label}` : `sep-role-${row.role}`}
+                className={`px-5 py-1.5 border-b ${isTeam ? 'bg-orchid-50/50 border-orchid-100' : 'bg-slate-50 border-slate-100'}`}
               >
-                <span className="text-[10px] font-bold uppercase tracking-widest text-slate-400">
+                <span className={`text-[10px] font-bold uppercase tracking-widest ${isTeam ? 'text-orchid-500' : 'text-slate-400'}`}>
                   {row.label}
                 </span>
               </div>
@@ -328,6 +361,47 @@ export default function Team() {
                     {member.role}
                   </span>
                 )}
+
+                {isOwner && !isMe ? (
+                  editingTeam?.memberId === member.id ? (
+                    <div className="flex items-center gap-1">
+                      <input
+                        autoFocus
+                        type="text"
+                        value={editingTeam.value}
+                        onChange={e => setEditingTeam(prev => ({ ...prev, value: e.target.value }))}
+                        onKeyDown={e => {
+                          if (e.key === 'Enter')  saveTeam(member.id, editingTeam.value)
+                          if (e.key === 'Escape') setEditingTeam(null)
+                        }}
+                        placeholder="team name…"
+                        className="text-xs border border-orchid-300 rounded px-2 py-1 w-24 outline-none focus:ring-2 focus:ring-orchid-400"
+                      />
+                      <button onClick={() => saveTeam(member.id, editingTeam.value)} className="text-emerald-600 hover:text-emerald-700 p-0.5">
+                        <Check size={13} />
+                      </button>
+                      <button onClick={() => setEditingTeam(null)} className="text-slate-400 hover:text-slate-600 p-0.5">
+                        <X size={13} />
+                      </button>
+                    </div>
+                  ) : (
+                    <button
+                      onClick={() => setEditingTeam({ memberId: member.id, value: member.team ?? '' })}
+                      title={member.team ? 'Edit team tag' : 'Add team tag'}
+                      className={`text-xs px-2 py-0.5 rounded-full border transition-colors ${
+                        member.team
+                          ? 'border-orchid-200 bg-orchid-50 text-orchid-700 hover:bg-orchid-100'
+                          : 'border-dashed border-slate-300 text-slate-400 hover:border-orchid-300 hover:text-orchid-500'
+                      }`}
+                    >
+                      {member.team || '+ team'}
+                    </button>
+                  )
+                ) : member.team ? (
+                  <span className="text-xs px-2 py-0.5 rounded-full bg-orchid-50 border border-orchid-200 text-orchid-700">
+                    {member.team}
+                  </span>
+                ) : null}
 
                 {isAdmin && !isMe && (
                   <button
