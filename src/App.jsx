@@ -18,6 +18,7 @@ const Clients          = lazy(() => import('./pages/Clients'))
 const Team             = lazy(() => import('./pages/Team'))
 const ClientPortal     = lazy(() => import('./pages/ClientPortal'))
 const ProfileSettings  = lazy(() => import('./pages/ProfileSettings'))
+const ResetPassword    = lazy(() => import('./pages/ResetPassword'))
 
 function PageLoader() {
   return (
@@ -38,6 +39,7 @@ export default function App() {
             <Routes>
               <Route path="/login" element={<Login />} />
               <Route path="/accept-invite" element={<AcceptInvite />} />
+              <Route path="/reset-password" element={<ResetPassword />} />
 
               {/* Client portal */}
               <Route element={<ProtectedRoute clientOnly />}>
