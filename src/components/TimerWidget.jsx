@@ -72,6 +72,16 @@ export default function TimerWidget() {
     return () => clearInterval(id)
   }, [running])
 
+  // Mirror the running timer into the browser tab title.
+  useEffect(() => {
+    if (running) {
+      document.title = `▶ ${formatDuration(elapsed)} · Sophiefy`
+    } else {
+      document.title = 'Sophiefy'
+    }
+    return () => { document.title = 'Sophiefy' }
+  }, [running, elapsed])
+
   useEffect(() => {
     function onResume(e) {
       const { description: d, projectId: pid } = e.detail ?? {}
