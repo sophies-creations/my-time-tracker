@@ -3,7 +3,7 @@ import {
   format, startOfWeek, endOfWeek, addWeeks, subWeeks,
   eachDayOfInterval, startOfDay, endOfDay, startOfMonth,
 } from 'date-fns'
-import { Download, ChevronLeft, ChevronRight, ChevronDown, Pencil, Trash2, Plus } from 'lucide-react'
+import { Download, ChevronLeft, ChevronRight, ChevronDown, Pencil, Trash2, Plus, X } from 'lucide-react'
 import { supabase, fetchAllPages } from '../lib/supabase'
 import { useAuth } from '../contexts/AuthContext'
 import { useData } from '../contexts/DataContext'
@@ -171,7 +171,8 @@ function DonutChart({ segments, total, size = 168 }) {
 }
 
 export default function Reports() {
-  const { isManager, isAdmin } = useAuth()
+  const { isManager, isAdmin, isOwner } = useAuth()
+  const canBulk = isAdmin || isOwner
   const { clients } = useData()
   const [tab, setTab] = useState('summary')
 
@@ -199,6 +200,11 @@ export default function Reports() {
   const [loading, setLoading]         = useState(false)
   const [weekRef, setWeekRef]         = useState(new Date())
   const [adminModal, setAdminModal]   = useState(null)
+  const [selectedIds, setSelectedIds]         = useState(() => new Set())
+  const [bulkProjectId, setBulkProjectId]     = useState('')
+  const [showBulkProject, setShowBulkProject] = useState(false)
+  const [showBulkDelete, setShowBulkDelete]   = useState(false)
+  const [bulkBusy, setBulkBusy]               = useState(false)
 
   useEffect(() => {
     if (isManager) fetchUsers()
@@ -242,6 +248,7 @@ export default function Reports() {
   }, [range, filterProjects, filterUsers, filterClients, filterDescription, filterStatus])
 
   useEffect(() => { fetchEntries() }, [fetchEntries])
+  useEffect(() => { setSelectedIds(new Set()) }, [entries])
 
   async function fetchUsers() {
     const { data } = await supabase.from('profiles')
@@ -266,6 +273,67 @@ export default function Reports() {
   function resetFilters() {
     setStagedProjects([]); setStagedUsers([]); setStagedClients([]); setStagedDescription(''); setStagedStatus('completed')
     setFilterProjects([]); setFilterUsers([]); setFilterClients([]); setFilterDescription(''); setFilterStatus('completed')
+  }
+
+  function toggleSelect(id) {
+    setSelectedIds(prev => {
+      const next = new Set(prev)
+      if (next.has(id)) next.delete(id); else next.add(id)
+      return next
+    })
+  }
+
+  function toggleSelectAll() {
+    if (allSelected) {
+      setSelectedIds(new Set())
+    } else {
+      setSelectedIds(new Set(entries.map(e => e.id)))
+    }
+  }
+
+  async function handleBulkChangeProject() {
+    if (!bulkProjectId || selectedIds.size === 0) return
+    setBulkBusy(true)
+    try {
+      const ids = [...selectedIds]
+      const { data, error } = await supabase.rpc('admin_bulk_update_project', {
+        p_ids: ids,
+        p_project_id: bulkProjectId,
+      })
+      if (error) throw error
+      const updated = data ?? 0
+      const proj = allProjects.find(p => p.id === bulkProjectId)
+      toast.success(`${updated} ${updated === 1 ? 'entry' : 'entries'} moved to ${proj?.name ?? 'project'}`)
+      if (updated < ids.length) toast.error(`${ids.length - updated} entries could not be updated`)
+      setSelectedIds(new Set())
+      setShowBulkProject(false)
+      setBulkProjectId('')
+      fetchEntries()
+    } catch (err) {
+      toast.error(err?.message ?? 'Bulk update failed')
+    } finally {
+      setBulkBusy(false)
+    }
+  }
+
+  async function handleBulkDelete() {
+    if (selectedIds.size === 0) return
+    setBulkBusy(true)
+    try {
+      const ids = [...selectedIds]
+      const { data, error } = await supabase.rpc('admin_bulk_delete_entries', { p_ids: ids })
+      if (error) throw error
+      const deleted = data ?? 0
+      toast.success(`${deleted} ${deleted === 1 ? 'entry' : 'entries'} deleted`)
+      if (deleted < ids.length) toast.error(`${ids.length - deleted} entries could not be deleted`)
+      setSelectedIds(new Set())
+      setShowBulkDelete(false)
+      fetchEntries()
+    } catch (err) {
+      toast.error(err?.message ?? 'Bulk delete failed')
+    } finally {
+      setBulkBusy(false)
+    }
   }
 
   async function handleAdminDelete(entry) {
@@ -307,7 +375,10 @@ export default function Reports() {
     } catch { toast.error('Export failed') }
   }
 
-  const totalSecs = entries.reduce((s, e) => s + (e.duration ?? 0), 0)
+  const totalSecs   = entries.reduce((s, e) => s + (e.duration ?? 0), 0)
+  const allIds      = entries.map(e => e.id)
+  const allSelected = allIds.length > 0 && allIds.every(id => selectedIds.has(id))
+  const someSelected = !allSelected && allIds.some(id => selectedIds.has(id))
 
   const primaryGroups = useMemo(() => {
     const flat = flatGroup(entries, groupBy)
@@ -769,16 +840,30 @@ export default function Reports() {
           {tab === 'detailed' && (
             <div className="space-y-5">
               {detailed.length > 0 && (
-                <div className="flex justify-end gap-2">
-                  <button
-                    onClick={() => expandAll(detailed.map(g => g.key))}
-                    className="text-xs font-medium text-slate-500 hover:text-orchid-700 transition-colors"
-                  >Expand all</button>
-                  <span className="text-xs text-slate-300">·</span>
-                  <button
-                    onClick={collapseAll}
-                    className="text-xs font-medium text-slate-500 hover:text-orchid-700 transition-colors"
-                  >Collapse all</button>
+                <div className="flex items-center">
+                  {canBulk && (
+                    <label className="flex items-center gap-2 text-xs text-slate-500 cursor-pointer select-none">
+                      <input
+                        type="checkbox"
+                        checked={allSelected}
+                        ref={el => { if (el) el.indeterminate = someSelected }}
+                        onChange={toggleSelectAll}
+                        className="accent-orchid-600 w-3.5 h-3.5 cursor-pointer"
+                      />
+                      {selectedIds.size > 0 ? `${selectedIds.size} selected` : 'Select all'}
+                    </label>
+                  )}
+                  <div className="flex gap-2 ml-auto">
+                    <button
+                      onClick={() => expandAll(detailed.map(g => g.key))}
+                      className="text-xs font-medium text-slate-500 hover:text-orchid-700 transition-colors"
+                    >Expand all</button>
+                    <span className="text-xs text-slate-300">·</span>
+                    <button
+                      onClick={collapseAll}
+                      className="text-xs font-medium text-slate-500 hover:text-orchid-700 transition-colors"
+                    >Collapse all</button>
+                  </div>
                 </div>
               )}
               <div className="space-y-3">
@@ -811,6 +896,7 @@ export default function Reports() {
                         <table className="w-full text-sm">
                           <thead>
                             <tr className="bg-slate-50/60 border-b border-slate-100">
+                              {canBulk && <th className="pl-4 pr-1 py-2 w-8" />}
                               <th className="text-left px-4 py-2 text-[10px] font-semibold text-slate-400 uppercase tracking-wide">Project</th>
                               <th className="text-left px-4 py-2 text-[10px] font-semibold text-slate-400 uppercase tracking-wide">Description</th>
                               {isManager && <th className="text-left px-4 py-2 text-[10px] font-semibold text-slate-400 uppercase tracking-wide">User</th>}
@@ -821,7 +907,17 @@ export default function Reports() {
                           </thead>
                           <tbody className="divide-y divide-slate-100">
                             {g.entries.map(entry => (
-                              <tr key={entry.id} className="hover:bg-slate-100 transition-colors">
+                              <tr key={entry.id} className={`hover:bg-slate-100 transition-colors ${canBulk && selectedIds.has(entry.id) ? 'bg-orchid-50/50' : ''}`}>
+                                {canBulk && (
+                                  <td className="pl-4 pr-1 py-2.5 w-8">
+                                    <input
+                                      type="checkbox"
+                                      checked={selectedIds.has(entry.id)}
+                                      onChange={() => toggleSelect(entry.id)}
+                                      className="accent-orchid-600 w-3.5 h-3.5 cursor-pointer"
+                                    />
+                                  </td>
+                                )}
                                 <td className="px-4 py-2.5">
                                   {entry.project ? (
                                     <span className="flex items-center gap-2">
@@ -962,6 +1058,97 @@ export default function Reports() {
           onClose={() => setAdminModal(null)}
           onSaved={() => { setAdminModal(null); fetchEntries() }}
         />
+      )}
+
+      {canBulk && selectedIds.size > 0 && tab === 'detailed' && (
+        <div className="fixed bottom-6 left-1/2 -translate-x-1/2 z-50 flex items-center gap-3 bg-slate-900 text-white px-5 py-3 rounded-2xl shadow-2xl border border-slate-700">
+          <span className="text-sm font-semibold tabular-nums">
+            {selectedIds.size} {selectedIds.size === 1 ? 'entry' : 'entries'} selected
+          </span>
+          <span className="text-slate-600">·</span>
+          <button
+            onClick={() => setShowBulkProject(true)}
+            className="text-sm text-orchid-300 hover:text-orchid-200 font-medium transition-colors"
+          >
+            Change project
+          </button>
+          <span className="text-slate-600">·</span>
+          <button
+            onClick={() => setShowBulkDelete(true)}
+            className="text-sm text-red-400 hover:text-red-300 font-medium transition-colors"
+          >
+            Delete
+          </button>
+          <button
+            onClick={() => setSelectedIds(new Set())}
+            title="Clear selection"
+            className="ml-1 p-1 text-slate-500 hover:text-white rounded transition-colors"
+          >
+            <X size={14} />
+          </button>
+        </div>
+      )}
+
+      {showBulkProject && (
+        <div
+          className="fixed inset-0 z-50 flex items-center justify-center bg-black/40"
+          onClick={e => { if (e.target === e.currentTarget) { setShowBulkProject(false); setBulkProjectId('') } }}
+        >
+          <div className="bg-white rounded-2xl shadow-2xl w-80 p-6">
+            <h2 className="text-base font-semibold text-slate-800 mb-1">Change project</h2>
+            <p className="text-sm text-slate-500 mb-4">
+              Assign {selectedIds.size} {selectedIds.size === 1 ? 'entry' : 'entries'} to:
+            </p>
+            <select
+              value={bulkProjectId}
+              onChange={e => setBulkProjectId(e.target.value)}
+              className="w-full text-sm border border-slate-200 rounded-lg px-3 py-2 outline-none focus:border-orchid-400 mb-4"
+            >
+              <option value="">Select a project…</option>
+              {allProjects.filter(p => !p.archived).map(p => (
+                <option key={p.id} value={p.id}>{p.name}</option>
+              ))}
+            </select>
+            <div className="flex justify-end gap-2">
+              <button
+                onClick={() => { setShowBulkProject(false); setBulkProjectId('') }}
+                className="px-4 py-2 text-sm text-slate-600 hover:bg-slate-100 rounded-lg transition-colors"
+              >Cancel</button>
+              <button
+                onClick={handleBulkChangeProject}
+                disabled={!bulkProjectId || bulkBusy}
+                className="px-4 py-2 text-sm font-semibold bg-orchid-600 hover:bg-orchid-700 text-white rounded-lg disabled:opacity-40 transition-colors"
+              >{bulkBusy ? 'Saving…' : 'Confirm'}</button>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {showBulkDelete && (
+        <div
+          className="fixed inset-0 z-50 flex items-center justify-center bg-black/40"
+          onClick={e => { if (e.target === e.currentTarget) setShowBulkDelete(false) }}
+        >
+          <div className="bg-white rounded-2xl shadow-2xl w-80 p-6">
+            <h2 className="text-base font-semibold text-red-700 mb-2">
+              Delete {selectedIds.size} {selectedIds.size === 1 ? 'entry' : 'entries'}?
+            </h2>
+            <p className="text-sm text-slate-500 mb-5">
+              This will permanently delete {selectedIds.size} time {selectedIds.size === 1 ? 'entry' : 'entries'}. This cannot be undone.
+            </p>
+            <div className="flex justify-end gap-2">
+              <button
+                onClick={() => setShowBulkDelete(false)}
+                className="px-4 py-2 text-sm text-slate-600 hover:bg-slate-100 rounded-lg transition-colors"
+              >Cancel</button>
+              <button
+                onClick={handleBulkDelete}
+                disabled={bulkBusy}
+                className="px-4 py-2 text-sm font-semibold bg-red-600 hover:bg-red-700 text-white rounded-lg disabled:opacity-40 transition-colors"
+              >{bulkBusy ? 'Deleting…' : 'Delete permanently'}</button>
+            </div>
+          </div>
+        </div>
       )}
     </div>
   )
