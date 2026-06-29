@@ -1,6 +1,7 @@
 import { useState, useEffect } from 'react'
 import { X } from 'lucide-react'
 import { supabase } from '../lib/supabase'
+import { useAuth } from '../contexts/AuthContext'
 import { useData } from '../contexts/DataContext'
 import toast from 'react-hot-toast'
 import { format } from 'date-fns'
@@ -41,7 +42,9 @@ function HmsInput({ value, onChange, ariaLabel }) {
 }
 
 export default function AdminTimeEntryModal({ entry, onClose, onSaved }) {
+  const { isAdmin, isOwner } = useAuth()
   const { projects } = useData()
+  const projectOptional = isAdmin || isOwner
   const [agents, setAgents]         = useState([])
   const [agentId, setAgentId]       = useState(entry?.user_id ?? '')
   const [projectId, setProjectId]   = useState(entry?.project_id ?? '')
@@ -84,7 +87,7 @@ export default function AdminTimeEntryModal({ entry, onClose, onSaved }) {
 
   async function handleSave() {
     if (!agentId)    { toast.error('Please select an agent'); return }
-    if (!projectId)  { toast.error('Please select a project'); return }
+    if (!projectId && !projectOptional) { toast.error('Please select a project'); return }
 
     const startNorm = normalizeTime(startTime, '00:00:00')
     const [sh, sm, ss] = startNorm.split(':').map(Number)
@@ -195,14 +198,14 @@ export default function AdminTimeEntryModal({ entry, onClose, onSaved }) {
           {/* Project */}
           <div>
             <label className="block text-xs font-medium text-slate-600 mb-1.5">
-              Project <span className="text-red-400">*</span>
+              Project{!projectOptional && <span className="text-red-400"> *</span>}
             </label>
             <select
               value={projectId}
               onChange={e => setProjectId(e.target.value)}
               className="w-full border border-slate-200 rounded-lg px-3 py-2 text-sm outline-none focus:ring-2 focus:ring-orchid-500"
             >
-              <option value="">Select a project…</option>
+              <option value="">{projectOptional ? 'No project' : 'Select a project…'}</option>
               {projects.map(p => <option key={p.id} value={p.id}>{p.name}</option>)}
             </select>
           </div>

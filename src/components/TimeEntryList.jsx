@@ -245,7 +245,12 @@ function StackRow({ group, isOpen, onToggle, onResume }) {
 export default function TimeEntryList({ entries, onRefresh }) {
   const { isManager } = useAuth()
   const [expanded, setExpanded] = useState(() => new Set())
-  const grouped = useMemo(() => groupByDate(entries), [entries])
+  // Always sort by start_time desc so editing/clicking never reorders rows.
+  const sorted  = useMemo(
+    () => [...entries].sort((a, b) => b.start_time.localeCompare(a.start_time)),
+    [entries]
+  )
+  const grouped = useMemo(() => groupByDate(sorted), [sorted])
 
   const weekTotal = useMemo(() => {
     const now = new Date()
@@ -311,7 +316,7 @@ export default function TimeEntryList({ entries, onRefresh }) {
         </span>
       </div>
       <div className="space-y-5">
-        {Object.entries(grouped).map(([date, dayEntries]) => {
+        {Object.entries(grouped).sort(([a], [b]) => b.localeCompare(a)).map(([date, dayEntries]) => {
           const totalSecs = dayEntries.reduce((sum, e) => sum + (e.duration ?? 0), 0)
           const stacks = stackDay(dayEntries)
           return (

@@ -14,7 +14,7 @@ const PROJECT_COLORS = [
 ]
 
 export default function TimerWidget() {
-  const { user } = useAuth()
+  const { user, isAdmin, isOwner } = useAuth()
   const { projects, favoriteIds, toggleFavorite, refreshProjects } = useData()
   const [running, setRunning]         = useState(null)
   const [elapsed, setElapsed]         = useState(0)
@@ -357,7 +357,8 @@ export default function TimerWidget() {
     if (!projectOpen) setProjectSearch('')
   }, [projectOpen])
 
-  const canStart = !!projectId
+  const projectOptional = isAdmin || isOwner
+  const canStart = !!projectId || projectOptional
   const startTitle = running
     ? (busy ? 'Saving entry…' : 'Stop the timer')
     : (canStart ? 'Start the timer' : 'Pick a project to start the timer')
@@ -419,7 +420,7 @@ export default function TimerWidget() {
             : <span className="w-2.5 h-2.5 rounded-full border-2 border-orchid-400 flex-shrink-0" />
           }
           <span className="max-w-[7rem] truncate">
-            {selectedProject ? selectedProject.name : 'Select project'}
+            {selectedProject ? selectedProject.name : projectOptional ? 'Project' : 'Select project'}
           </span>
           <ChevronDown size={12} className="text-slate-400 flex-shrink-0" />
         </button>
