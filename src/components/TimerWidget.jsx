@@ -26,6 +26,8 @@ export default function TimerWidget() {
   const [newProjectName, setNewProjectName] = useState('')
   const [creatingProject, setCreatingProject] = useState(false)
   const [busy, setBusy] = useState(false)
+  const [editingStart, setEditingStart] = useState(false)
+  const [startDraft, setStartDraft]     = useState('')
 
   // Autocomplete state
   const [suggestions, setSuggestions] = useState([])
@@ -367,6 +369,30 @@ export default function TimerWidget() {
     if (!projectOpen) setProjectSearch('')
   }, [projectOpen])
 
+  function openStartEdit() {
+    if (!running) return
+    const st = new Date(running.start_time)
+    setStartDraft(`${String(st.getHours()).padStart(2, '0')}:${String(st.getMinutes()).padStart(2, '0')}`)
+    setEditingStart(true)
+  }
+
+  async function saveStartTime() {
+    setEditingStart(false)
+    if (!running || !startDraft) return
+    const [hh, mm] = startDraft.split(':').map(Number)
+    const newStart = new Date(running.start_time)
+    newStart.setHours(hh, mm, 0, 0)
+    if (newStart >= new Date()) { toast.error('Start time cannot be in the future'); return }
+    const newISO = newStart.toISOString()
+    const { data, error } = await supabase
+      .from('time_entries')
+      .update({ start_time: newISO })
+      .eq('id', running.id)
+      .select('id')
+    if (error || !data?.length) { toast.error(error?.message ?? 'Could not update start time'); return }
+    setRunning(prev => ({ ...prev, start_time: newISO }))
+  }
+
   const projectOptional = isAdmin || isOwner
   const canStart = !!projectId || projectOptional
   const startTitle = running
@@ -543,9 +569,28 @@ export default function TimerWidget() {
             <span className="relative block w-2.5 h-2.5 rounded-full bg-red-500" />
           </span>
         )}
-        <span className="font-mono text-sm font-semibold text-slate-700 tabular-nums">
-          {formatDuration(running ? elapsed : 0)}
-        </span>
+        {running && editingStart ? (
+          <input
+            type="time"
+            value={startDraft}
+            autoFocus
+            onChange={e => setStartDraft(e.target.value)}
+            onBlur={saveStartTime}
+            onKeyDown={e => {
+              if (e.key === 'Enter') { e.preventDefault(); saveStartTime() }
+              if (e.key === 'Escape') setEditingStart(false)
+            }}
+            className="w-20 text-xs font-mono text-center border border-orchid-400 rounded px-1 py-0.5 outline-none focus:ring-1 focus:ring-orchid-400"
+          />
+        ) : (
+          <span
+            onClick={running ? openStartEdit : undefined}
+            title={running ? 'Click to edit start time' : undefined}
+            className={`font-mono text-sm font-semibold text-slate-700 tabular-nums ${running ? 'cursor-pointer hover:text-orchid-600 transition-colors' : ''}`}
+          >
+            {formatDuration(running ? elapsed : 0)}
+          </span>
+        )}
       </div>
 
       <button
