@@ -205,6 +205,7 @@ export default function Reports() {
   const [showBulkProject, setShowBulkProject] = useState(false)
   const [showBulkDelete, setShowBulkDelete]   = useState(false)
   const [bulkBusy, setBulkBusy]               = useState(false)
+  const [descFilter, setDescFilter]           = useState('all')
 
   useEffect(() => {
     if (isManager) fetchUsers()
@@ -287,7 +288,7 @@ export default function Reports() {
     if (allSelected) {
       setSelectedIds(new Set())
     } else {
-      setSelectedIds(new Set(entries.map(e => e.id)))
+      setSelectedIds(new Set(detailedEntries.map(e => e.id)))
     }
   }
 
@@ -375,9 +376,21 @@ export default function Reports() {
     } catch { toast.error('Export failed') }
   }
 
-  const totalSecs   = entries.reduce((s, e) => s + (e.duration ?? 0), 0)
-  const allIds      = entries.map(e => e.id)
-  const allSelected = allIds.length > 0 && allIds.every(id => selectedIds.has(id))
+  const totalSecs = entries.reduce((s, e) => s + (e.duration ?? 0), 0)
+
+  const detailedEntries = useMemo(() => {
+    if (!canBulk || descFilter === 'all') return entries
+    if (descFilter === 'none')     return entries.filter(e => !e.description?.trim())
+    if (descFilter === 'imported') return entries.filter(e => e.description === '[Imported]')
+    if (descFilter === 'has')      return entries.filter(e => {
+      const d = e.description?.trim()
+      return !!d && d !== '[Imported]'
+    })
+    return entries
+  }, [entries, descFilter, canBulk])
+
+  const allIds       = detailedEntries.map(e => e.id)
+  const allSelected  = allIds.length > 0 && allIds.every(id => selectedIds.has(id))
   const someSelected = !allSelected && allIds.some(id => selectedIds.has(id))
 
   const primaryGroups = useMemo(() => {
@@ -393,7 +406,7 @@ export default function Reports() {
     return top.map((g, i) => ({ ...g, color: g.color || CHART_COLORS[i % CHART_COLORS.length] }))
   }, [entries, groupBy, secondaryBy, tertiaryBy])
 
-  const detailed = useMemo(() => flatGroup(entries, groupBy), [entries, groupBy])
+  const detailed = useMemo(() => flatGroup(detailedEntries, groupBy), [detailedEntries, groupBy])
 
   const chartBuckets = useMemo(() => buildBuckets(entries, range), [entries, range])
 
@@ -659,6 +672,22 @@ export default function Reports() {
           />
         )}
       </FilterPill>
+      {canBulk && (
+        <>
+          <div className="w-px h-5 bg-slate-200 mx-1 flex-shrink-0" />
+          <span className="text-xs font-semibold text-slate-500 uppercase tracking-wide flex-shrink-0">Desc.</span>
+          <select
+            value={descFilter}
+            onChange={e => { setDescFilter(e.target.value); setSelectedIds(new Set()) }}
+            className="text-xs border border-slate-200 rounded-lg px-2.5 py-1.5 outline-none focus:border-orchid-400 text-slate-700 bg-surface cursor-pointer"
+          >
+            <option value="all">All</option>
+            <option value="none">No description</option>
+            <option value="imported">[Imported]</option>
+            <option value="has">Has description</option>
+          </select>
+        </>
+      )}
     </div>
   )
 
