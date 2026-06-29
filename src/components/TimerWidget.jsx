@@ -363,6 +363,7 @@ export default function TimerWidget() {
     : (canStart ? 'Start the timer' : 'Pick a project to start the timer')
 
   return (
+    <div>
     <div className="border-b border-slate-200 bg-surface flex items-center flex-shrink-0 h-14 px-3">
 
       {/* Description input with autocomplete */}
@@ -418,7 +419,7 @@ export default function TimerWidget() {
             : <span className="w-2.5 h-2.5 rounded-full border-2 border-orchid-400 flex-shrink-0" />
           }
           <span className="max-w-[7rem] truncate">
-            {selectedProject ? selectedProject.name : 'Project'}
+            {selectedProject ? selectedProject.name : 'Select project'}
           </span>
           <ChevronDown size={12} className="text-slate-400 flex-shrink-0" />
         </button>
@@ -541,6 +542,12 @@ export default function TimerWidget() {
         {running ? <Square size={13} fill="currentColor" /> : <Play size={13} fill="currentColor" />}
         {running ? (busy ? 'Saving…' : 'Stop') : 'Start'}
       </button>
+    </div>
+    {!running && !canStart && (
+      <div className="flex items-center justify-end px-3 py-1 bg-surface border-b border-slate-100">
+        <span className="text-[11px] text-slate-400">Select a project to start the timer</span>
+      </div>
+    )}
     </div>
   )
 }

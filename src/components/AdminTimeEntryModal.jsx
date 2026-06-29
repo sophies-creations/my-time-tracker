@@ -83,7 +83,8 @@ export default function AdminTimeEntryModal({ entry, onClose, onSaved }) {
   }, [entry])
 
   async function handleSave() {
-    if (!agentId) { toast.error('Please select an agent'); return }
+    if (!agentId)    { toast.error('Please select an agent'); return }
+    if (!projectId)  { toast.error('Please select a project'); return }
 
     const startNorm = normalizeTime(startTime, '00:00:00')
     const [sh, sm, ss] = startNorm.split(':').map(Number)
@@ -193,13 +194,15 @@ export default function AdminTimeEntryModal({ entry, onClose, onSaved }) {
 
           {/* Project */}
           <div>
-            <label className="block text-xs font-medium text-slate-600 mb-1.5">Project</label>
+            <label className="block text-xs font-medium text-slate-600 mb-1.5">
+              Project <span className="text-red-400">*</span>
+            </label>
             <select
               value={projectId}
               onChange={e => setProjectId(e.target.value)}
               className="w-full border border-slate-200 rounded-lg px-3 py-2 text-sm outline-none focus:ring-2 focus:ring-orchid-500"
             >
-              <option value="">No project</option>
+              <option value="">Select a project…</option>
               {projects.map(p => <option key={p.id} value={p.id}>{p.name}</option>)}
             </select>
           </div>
