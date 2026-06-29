@@ -47,15 +47,13 @@ export default function Calendar() {
       ? supabase.from('shift_change_requests').select(SELECT_REQS).eq('status', 'pending').order('created_at', { ascending: false })
       : supabase.from('shift_change_requests').select(SELECT_REQS).order('created_at', { ascending: false })
 
-    // Managers fetch everyone (all non-client active, including hidden rows).
-    // Members fetch only other members and only visible (non-hidden) ones.
-    const profileQuery = isManager
-      ? supabase.from('profiles')
-          .select('id, full_name, email, role, schedule_hidden')
-          .neq('role', 'client').eq('active', true).order('full_name')
-      : supabase.from('profiles')
-          .select('id, full_name, email, role, schedule_hidden')
-          .eq('role', 'member').eq('active', true).eq('schedule_hidden', false).order('full_name')
+    // All roles see the same set: every active, non-client profile.
+    // Deactivated (active=false) and client rows are excluded at the DB level.
+    // Hidden rows (schedule_hidden=true) are filtered in roleGroups below;
+    // managers can still reveal them via the showHidden toggle.
+    const profileQuery = supabase.from('profiles')
+      .select('id, full_name, email, role, schedule_hidden')
+      .neq('role', 'client').eq('active', true).order('full_name')
 
     const [membersRes, cellsRes, requestsRes] = await Promise.all([
       profileQuery,
@@ -135,7 +133,7 @@ export default function Calendar() {
       visibleMembers.forEach(m => rows.push({ type: 'member', member: m, isHidden: !!m.schedule_hidden }))
     }
 
-    if (isManager && staffList.length) {
+    if (staffList.length) {
       const visibleStaff = showHidden ? staffList : staffList.filter(m => !m.schedule_hidden)
       if (visibleStaff.length) {
         rows.push({ type: 'separator', label: 'Staff' })
@@ -144,7 +142,7 @@ export default function Calendar() {
     }
 
     return rows
-  }, [members, isManager, showHidden])
+  }, [members, showHidden])
 
   const hiddenCount = useMemo(() => members.filter(m => m.schedule_hidden).length, [members])
   const today = format(new Date(), 'yyyy-MM-dd')
