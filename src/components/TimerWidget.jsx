@@ -534,9 +534,14 @@ export default function TimerWidget() {
 
       <div className="w-px h-8 bg-slate-200 mx-2 flex-shrink-0" />
 
-      <span className="font-mono text-sm font-semibold text-slate-700 w-[5.5rem] text-center flex-shrink-0 tabular-nums">
-        {formatDuration(running ? elapsed : 0)}
-      </span>
+      <div className="flex items-center justify-center gap-1.5 w-[5.5rem] flex-shrink-0">
+        {running && (
+          <span className="w-2 h-2 rounded-full bg-red-500 flex-shrink-0 animate-pulse" />
+        )}
+        <span className="font-mono text-sm font-semibold text-slate-700 tabular-nums">
+          {formatDuration(running ? elapsed : 0)}
+        </span>
+      </div>
 
       <button
         onClick={running ? handleStop : handleStart}
