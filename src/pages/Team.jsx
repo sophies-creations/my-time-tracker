@@ -63,7 +63,10 @@ export default function Team() {
   }
 
   async function updateRole(userId, role) {
-    const { error } = await supabase.from('profiles').update({ role }).eq('id', userId)
+    const { error } = await supabase.rpc('owner_set_role', {
+      p_user_id: userId,
+      p_role:    role,
+    })
     if (error) { toast.error(error.message ?? 'Update failed'); return }
     toast.success('Role updated')
     fetchMembers()
@@ -219,12 +222,9 @@ export default function Team() {
 
           const member    = row.member
           const isHidden  = row.isHidden
-          const isMe      = member.id === myProfile?.id
-          const canEditRole =
-            isAdmin && !isMe && (member.role !== 'owner' || isOwner)
-          const roleOptions = isOwner
-            ? ['member', 'manager', 'admin', 'owner']
-            : ['member', 'manager', 'admin']
+          const isMe        = member.id === myProfile?.id
+          const canEditRole = isOwner && !isMe
+          const roleOptions = ['member', 'manager', 'admin', 'owner']
           const isEditingThisName = editingName?.memberId === member.id
 
           return (
@@ -326,7 +326,7 @@ export default function Team() {
                   </button>
                 )}
 
-                {isAdmin && !isMe && (
+                {isOwner && !isMe && (
                   <button
                     onClick={() => setSetPwdTarget({ id: member.id, full_name: member.full_name, email: member.email })}
                     title="Set password"
