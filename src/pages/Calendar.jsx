@@ -288,9 +288,10 @@ export default function Calendar() {
                       </div>
                     </td>
                     {weekDays.map((day, di) => {
-                      const dateStr = format(day, 'yyyy-MM-dd')
-                      const content = cellMap[m.id]?.[dateStr] ?? ''
-                      const isLast  = di === 6
+                      const dateStr  = format(day, 'yyyy-MM-dd')
+                      const content  = cellMap[m.id]?.[dateStr] ?? ''
+                      const isLast   = di === 6
+                      const isOwnRow = m.id === user?.id
                       return (
                         <td
                           key={dateStr}
@@ -298,7 +299,7 @@ export default function Calendar() {
                         >
                           <ScheduleCell
                             content={content}
-                            isManager={isManager}
+                            canEdit={isManager || isOwnRow}
                             onSave={newContent => saveCell(m.id, dateStr, newContent)}
                           />
                         </td>
@@ -358,7 +359,7 @@ function normalizeTimeRange(value) {
   return `${String(h1).padStart(2, '0')}:00-${String(h2).padStart(2, '0')}:00`
 }
 
-function ScheduleCell({ content, isManager, onSave }) {
+function ScheduleCell({ content, canEdit, onSave }) {
   const [editing, setEditing] = useState(false)
   const [draft, setDraft]     = useState('')
   const inputRef              = useRef(null)
@@ -368,7 +369,7 @@ function ScheduleCell({ content, isManager, onSave }) {
   }, [editing])
 
   function startEdit() {
-    if (!isManager) return
+    if (!canEdit) return
     setDraft(content)
     setEditing(true)
   }
@@ -440,10 +441,10 @@ function ScheduleCell({ content, isManager, onSave }) {
   return (
     <div
       onClick={startEdit}
-      className={`group/cell relative w-full h-[48px] flex items-center justify-center ${cellBg} ${isManager ? 'cursor-text' : ''}`}
+      className={`group/cell relative w-full h-[48px] flex items-center justify-center ${cellBg} ${canEdit ? 'cursor-text' : ''}`}
     >
       <span className={`text-xs leading-snug ${textColor}`}>{content}</span>
-      {isManager && !content && (
+      {canEdit && !content && (
         <span className="absolute inset-0 flex items-center justify-center opacity-0 group-hover/cell:opacity-100 text-[10px] text-slate-300 transition-opacity pointer-events-none select-none">
           click to edit
         </span>
