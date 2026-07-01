@@ -4,6 +4,7 @@ import { Toaster } from 'react-hot-toast'
 import { AuthProvider } from './contexts/AuthContext'
 import { DataProvider } from './contexts/DataContext'
 import { ThemeProvider } from './contexts/ThemeContext'
+import { ReportsFilterProvider } from './contexts/ReportsFilterContext'
 import ProtectedRoute from './components/ProtectedRoute'
 import Layout from './components/Layout'
 
@@ -34,6 +35,7 @@ export default function App() {
       <AuthProvider>
         <ThemeProvider>
         <DataProvider>
+        <ReportsFilterProvider>
           <Toaster position="bottom-right" toastOptions={{ duration: 3000 }} />
           <Suspense fallback={<PageLoader />}>
             <Routes>
@@ -64,6 +66,7 @@ export default function App() {
               <Route path="*" element={<Navigate to="/" replace />} />
             </Routes>
           </Suspense>
+        </ReportsFilterProvider>
         </DataProvider>
         </ThemeProvider>
       </AuthProvider>

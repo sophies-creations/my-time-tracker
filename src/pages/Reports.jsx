@@ -7,6 +7,7 @@ import { Download, ChevronLeft, ChevronRight, ChevronDown, Pencil, Trash2, Plus,
 import { supabase, fetchAllPages } from '../lib/supabase'
 import { useAuth } from '../contexts/AuthContext'
 import { useData } from '../contexts/DataContext'
+import { useReportsFilters } from '../contexts/ReportsFilterContext'
 import { formatDuration, formatDecimalHours } from '../utils/formatters'
 import { exportToExcel } from '../utils/export'
 import DateRangePicker from '../components/DateRangePicker'
@@ -174,25 +175,24 @@ export default function Reports() {
   const { isManager, isAdmin, isOwner } = useAuth()
   const canBulk = isAdmin || isOwner
   const { clients } = useData()
-  const [tab, setTab] = useState('summary')
-
-  const [range, setRange] = useState({ from: startOfDay(new Date()), to: startOfDay(new Date()) })
-
-  const [filterProjects,    setFilterProjects]    = useState([])
-  const [filterUsers,       setFilterUsers]       = useState([])
-  const [filterClients,     setFilterClients]     = useState([])
-  const [filterDescription, setFilterDescription] = useState('')
-  const [filterStatus,      setFilterStatus]      = useState('completed')
-
-  const [stagedProjects,    setStagedProjects]    = useState([])
-  const [stagedUsers,       setStagedUsers]       = useState([])
-  const [stagedClients,     setStagedClients]     = useState([])
-  const [stagedDescription, setStagedDescription] = useState('')
-  const [stagedStatus,      setStagedStatus]      = useState('completed')
-
-  const [groupBy,     setGroupBy]     = useState('project')
-  const [secondaryBy, setSecondaryBy] = useState('none')
-  const [tertiaryBy,  setTertiaryBy]  = useState('none')
+  const {
+    tab, setTab,
+    range, setRange,
+    filterProjects,    setFilterProjects,
+    filterUsers,       setFilterUsers,
+    filterClients,     setFilterClients,
+    filterDescription, setFilterDescription,
+    filterStatus,      setFilterStatus,
+    stagedProjects,    setStagedProjects,
+    stagedUsers,       setStagedUsers,
+    stagedClients,     setStagedClients,
+    stagedDescription, setStagedDescription,
+    stagedStatus,      setStagedStatus,
+    groupBy,     setGroupBy,
+    secondaryBy, setSecondaryBy,
+    tertiaryBy,  setTertiaryBy,
+    descFilter,  setDescFilter,
+  } = useReportsFilters()
   const [expanded,    setExpanded]    = useState(() => new Set())
   const [entries, setEntries]         = useState([])
   const [allUsers, setAllUsers]       = useState([])
@@ -205,7 +205,6 @@ export default function Reports() {
   const [showBulkProject, setShowBulkProject] = useState(false)
   const [showBulkDelete, setShowBulkDelete]   = useState(false)
   const [bulkBusy, setBulkBusy]               = useState(false)
-  const [descFilter, setDescFilter]           = useState('all')
 
   useEffect(() => {
     if (isManager) fetchUsers()
@@ -1193,7 +1192,7 @@ function GroupRow({ level, label, color, seconds, pct, hasChildren, expanded, on
   return (
     <Wrapper
       onClick={hasChildren ? onToggle : undefined}
-      className={`w-full flex items-center gap-3 ${indentClass} pr-5 py-2.5 text-left ${hasChildren ? 'hover:bg-slate-100' : ''}`}
+      className={`w-full flex items-center gap-3 ${indentClass} pr-5 py-2.5 text-left hover:bg-slate-100 transition-colors`}
     >
       {hasChildren ? (
         <ChevronDown
