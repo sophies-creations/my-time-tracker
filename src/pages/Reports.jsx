@@ -43,7 +43,7 @@ export function formatUserLabel(user) {
   if (!user) return 'Unknown user'
   const name = user.full_name || user.email || 'Unknown user'
   const role = user.role
-  if (!role) return name
+  if (!role || role === 'member') return name
   return `${name} (${ROLE_LABELS[role] ?? role})`
 }
 
