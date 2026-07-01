@@ -22,7 +22,7 @@ function initials(profile) {
 }
 
 export default function TopBar() {
-  const { user, profile, signOut } = useAuth()
+  const { user, profile, signOut, isAdmin } = useAuth()
   const { theme, toggleTheme } = useTheme()
   const navigate = useNavigate()
   const location = useLocation()
@@ -164,13 +164,15 @@ export default function TopBar() {
               </span>
             </div>
             <div className="py-1">
-              <button
-                onClick={openAddTime}
-                className="w-full flex items-center gap-2.5 px-4 py-2 text-sm text-slate-700 hover:bg-slate-100 text-left"
-              >
-                <Plus size={14} />
-                Add time
-              </button>
+              {isAdmin && (
+                <button
+                  onClick={openAddTime}
+                  className="w-full flex items-center gap-2.5 px-4 py-2 text-sm text-slate-700 hover:bg-slate-100 text-left"
+                >
+                  <Plus size={14} />
+                  Add time
+                </button>
+              )}
               <button
                 onClick={() => { setOpen(false); navigate('/profile') }}
                 className="w-full flex items-center gap-2.5 px-4 py-2 text-sm text-slate-700 hover:bg-slate-100 text-left"
