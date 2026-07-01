@@ -8,6 +8,11 @@ export function formatDuration(seconds) {
   return `${h}:${String(m).padStart(2, '0')}:${String(s).padStart(2, '0')}`
 }
 
+export function formatDecimalHours(seconds) {
+  if (!seconds || seconds < 0) return '0.00h'
+  return `${(seconds / 3600).toFixed(2)}h`
+}
+
 export function formatTime(iso) {
   if (!iso) return ''
   return format(parseISO(iso), 'HH:mm:ss')

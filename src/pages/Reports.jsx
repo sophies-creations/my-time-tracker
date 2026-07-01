@@ -7,7 +7,7 @@ import { Download, ChevronLeft, ChevronRight, ChevronDown, Pencil, Trash2, Plus,
 import { supabase, fetchAllPages } from '../lib/supabase'
 import { useAuth } from '../contexts/AuthContext'
 import { useData } from '../contexts/DataContext'
-import { formatDuration } from '../utils/formatters'
+import { formatDuration, formatDecimalHours } from '../utils/formatters'
 import { exportToExcel } from '../utils/export'
 import DateRangePicker from '../components/DateRangePicker'
 import StackedDayBars, { buildBuckets } from '../components/StackedDayBars'
@@ -752,6 +752,7 @@ export default function Reports() {
                   <span className="text-xs uppercase tracking-wide font-semibold" style={{ color: 'var(--color-chart-total)' }}>Total</span>
                   <span className="text-xl font-bold font-mono tabular-nums" style={{ color: 'var(--color-chart-total)' }}>
                     {formatDuration(totalSecs)}
+                    <span className="text-sm font-normal opacity-60 ml-2">· {formatDecimalHours(totalSecs)}</span>
                   </span>
                 </div>
                 <div className="bg-surface rounded-b-xl p-5">
@@ -919,6 +920,7 @@ export default function Reports() {
                         </span>
                         <span className="font-mono text-sm font-semibold text-orchid-900 shrink-0">
                           {formatDuration(g.seconds)}
+                          <span className="text-xs font-normal text-orchid-600/70 ml-1.5">{formatDecimalHours(g.seconds)}</span>
                         </span>
                       </button>
                       {isOpen && (
@@ -1202,8 +1204,9 @@ function GroupRow({ level, label, color, seconds, pct, hasChildren, expanded, on
       <span className="w-2.5 h-2.5 rounded-full shrink-0" style={{ backgroundColor: color }} />
       <span className={`truncate flex-1 ${labelCls} ${fontCls}`}>{label}</span>
       <span className="text-xs text-slate-400 shrink-0 font-mono w-12 text-right">{pct.toFixed(1)}%</span>
-      <span className={`font-mono ${level === 1 ? 'text-sm font-semibold text-slate-800' : 'text-sm text-slate-700'} w-24 text-right shrink-0 tabular-nums`}>
+      <span className={`font-mono ${level === 1 ? 'text-sm font-semibold text-slate-800' : 'text-sm text-slate-700'} text-right shrink-0 tabular-nums`}>
         {formatDuration(seconds)}
+        <span className="text-[11px] font-normal text-slate-400 ml-1.5">{formatDecimalHours(seconds)}</span>
       </span>
     </Wrapper>
   )
