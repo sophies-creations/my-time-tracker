@@ -101,16 +101,22 @@ function flatGroup(entries, by) {
   return Array.from(map.values()).sort((a, b) => b.seconds - a.seconds)
 }
 
+// Grouped-totals table sorts alphabetically by group name (case-insensitive),
+// independent of flatGroup's own time-descending order used elsewhere.
+function sortByLabel(groups) {
+  return [...groups].sort((a, b) => a.label.localeCompare(b.label, undefined, { sensitivity: 'base' }))
+}
+
 // Up to three levels of nesting. Each level may be 'none' to stop.
 function nestGroup(entries, by, then, andThen) {
-  const top = flatGroup(entries, by)
+  const top = sortByLabel(flatGroup(entries, by))
   if (then === 'none') return top.map(g => ({ ...g, children: null }))
   return top.map(g => {
-    const second = flatGroup(g.entries, then)
+    const second = sortByLabel(flatGroup(g.entries, then))
     if (andThen === 'none') return { ...g, children: second.map(s => ({ ...s, children: null })) }
     return {
       ...g,
-      children: second.map(s => ({ ...s, children: flatGroup(s.entries, andThen) })),
+      children: second.map(s => ({ ...s, children: sortByLabel(flatGroup(s.entries, andThen)) })),
     }
   })
 }

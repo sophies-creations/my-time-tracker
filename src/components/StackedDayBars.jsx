@@ -187,40 +187,20 @@ function Tooltip({ bucket, anchorRect }) {
     setPos({ left, top })
   }, [anchorRect, bucket])
 
-  const sorted = bucket.total
-    ? [...bucket.segments].sort((a, b) => b.seconds - a.seconds)
-    : []
-
   return createPortal(
     <div
       ref={elRef}
-      className="fixed pointer-events-none z-[9999] bg-[#1a1221] text-white rounded-lg shadow-xl px-3 py-2 w-[16rem]"
+      className="fixed pointer-events-none z-[9999] bg-[#1a1221] text-white rounded-lg shadow-xl px-3 py-2"
       style={{
         left: pos ? pos.left : anchorRect.left,
         top: pos ? pos.top : anchorRect.top,
         visibility: pos ? 'visible' : 'hidden',
       }}
     >
-      <div className="flex items-center justify-between gap-3 pb-1.5 mb-1.5 border-b border-white/10">
-        <span className="text-xs font-semibold">{bucket.tooltipLabel}</span>
+      <div className="flex items-center gap-3">
+        <span className="text-xs font-semibold whitespace-nowrap">{bucket.tooltipLabel}</span>
         <span className="text-xs font-mono tabular-nums">{formatDuration(bucket.total)}</span>
       </div>
-      {bucket.total === 0 ? (
-        <div className="text-[11px] text-slate-300">No time tracked</div>
-      ) : (
-        <div className="space-y-1">
-          {sorted.map((s, i) => (
-            <div key={i} className="flex items-center gap-2 text-[11px]">
-              <span className="w-2 h-2 rounded-full shrink-0" style={{ backgroundColor: s.color }} />
-              <span className="flex-1 truncate">{s.name}</span>
-              <span className="font-mono tabular-nums text-slate-200">{formatDuration(s.seconds)}</span>
-              <span className="font-mono tabular-nums text-slate-400 w-8 text-right">
-                {Math.round((s.seconds / bucket.total) * 100)}%
-              </span>
-            </div>
-          ))}
-        </div>
-      )}
     </div>,
     document.body
   )
