@@ -5,6 +5,11 @@
 # One-time import data — never commit
 silent_accounts.csv
 invite_accounts.csv
+team_emails.txt
+invite_accounts_real.csv
+silent_accounts_1.csv
+test_invite.csv
+supabase/.temp/
 
 # Claude Code memory
 .claude/
