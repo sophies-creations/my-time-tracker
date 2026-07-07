@@ -83,8 +83,11 @@ export default function Calendar() {
   async function saveCell(memberId, dateStr, content) {
     const trimmed = content.trim()
     if (trimmed === '') {
-      const { error } = await supabase.from('schedule_cells').delete().eq('user_id', memberId).eq('work_date', dateStr)
+      const { data, error } = await supabase.from('schedule_cells')
+        .delete().eq('user_id', memberId).eq('work_date', dateStr)
+        .select()
       if (error) { toast.error(error.message || 'Delete failed'); return }
+      if (!data || data.length === 0) { toast.error('Delete blocked — check your role permissions'); return }
       setCellMap(prev => {
         const next = { ...prev, [memberId]: { ...(prev[memberId] ?? {}) } }
         delete next[memberId][dateStr]
@@ -206,10 +209,16 @@ export default function Calendar() {
         </div>
       ) : (
         <div className="overflow-x-auto rounded-xl border border-slate-200 bg-surface shadow-sm">
-          <table className="border-separate border-spacing-0 w-full min-w-[640px]">
+          <table className="table-fixed border-separate border-spacing-0 w-full min-w-[860px]">
+            <colgroup>
+              <col style={{ width: '160px' }} />
+              {weekDays.map(day => (
+                <col key={format(day, 'yyyy-MM-dd')} style={{ width: 'calc((100% - 160px) / 7)' }} />
+              ))}
+            </colgroup>
             <thead>
               <tr>
-                <th className="sticky left-0 z-20 bg-slate-50 border-b border-r border-slate-200 px-4 py-3 text-left text-xs font-semibold text-slate-500 uppercase tracking-wide min-w-[160px]">
+                <th className="sticky top-0 left-0 z-30 bg-slate-50 border-b border-r border-slate-200 px-4 py-3 text-left text-xs font-semibold text-slate-500 uppercase tracking-wide">
                   Member
                 </th>
                 {weekDays.map(day => {
@@ -218,7 +227,7 @@ export default function Calendar() {
                   return (
                     <th
                       key={key}
-                      className={`border-b border-r border-slate-200 px-2 py-3 text-center text-xs font-semibold min-w-[100px] last:border-r-0 ${isToday ? 'text-orchid-600 bg-orchid-50' : 'text-slate-500 bg-slate-50'}`}
+                      className={`sticky top-0 z-20 border-b border-r border-slate-200 px-2 py-3 text-center text-xs font-semibold last:border-r-0 ${isToday ? 'text-orchid-600 bg-orchid-50' : 'text-slate-500 bg-slate-50'}`}
                     >
                       <div>{format(day, 'EEE')}</div>
                       <div className={`text-base font-bold mt-0.5 ${isToday ? 'text-orchid-700' : 'text-slate-700'}`}>
