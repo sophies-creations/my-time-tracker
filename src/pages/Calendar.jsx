@@ -208,7 +208,7 @@ export default function Calendar() {
           <div className="w-6 h-6 border-2 border-orchid-600 border-t-transparent rounded-full animate-spin" />
         </div>
       ) : (
-        <div className="overflow-x-auto rounded-xl border border-slate-200 bg-surface shadow-sm">
+        <div className="overflow-auto max-h-[75vh] rounded-xl border border-slate-200 bg-surface shadow-sm">
           <table className="table-fixed border-separate border-spacing-0 w-full min-w-[860px]">
             <colgroup>
               <col style={{ width: '160px' }} />
