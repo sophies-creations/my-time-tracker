@@ -124,11 +124,10 @@ export default function Calendar() {
     window.dispatchEvent(new CustomEvent('sophiefy:approvals-changed'))
   }
 
-  // Team sections first (orchid separators, alpha by team name), then — for
-  // untagged members only — one section per primary language (languages[0],
-  // alpha by language), then "Unassigned" for untagged members with no
-  // languages either, then the untagged Staff block last (slate separators
-  // throughout).
+  // Language sections first (alpha by language, untagged members only),
+  // then "Unassigned" for untagged members with no languages either, then
+  // Team sections (orchid separators, alpha by team name), then the
+  // untagged Staff block last (slate separators throughout).
   const roleGroups = useMemo(() => {
     const byName = (a, b) => (a.full_name ?? a.email).localeCompare(b.full_name ?? b.email)
 
@@ -143,11 +142,6 @@ export default function Calendar() {
       visible.forEach(m => rows.push({ type: 'member', member: m, isHidden: !!m.schedule_hidden }))
     }
 
-    const teamNames = [...new Set(tagged.map(m => m.team))].sort()
-    for (const team of teamNames) {
-      pushSection('team', team, tagged.filter(m => m.team === team).sort(byName))
-    }
-
     const memberList = untagged.filter(m => m.role === 'member')
     const staffList  = untagged.filter(m => STAFF_ROLES.includes(m.role)).sort(byName)
 
@@ -160,6 +154,12 @@ export default function Calendar() {
     }
 
     pushSection('role', 'Unassigned', noLanguage)
+
+    const teamNames = [...new Set(tagged.map(m => m.team))].sort()
+    for (const team of teamNames) {
+      pushSection('team', team, tagged.filter(m => m.team === team).sort(byName))
+    }
+
     pushSection('role', 'Staff', staffList)
 
     return rows
