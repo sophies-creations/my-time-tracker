@@ -52,7 +52,7 @@ export default function Calendar() {
     // Hidden rows (schedule_hidden=true) are filtered in roleGroups below;
     // managers can still reveal them via the showHidden toggle.
     const profileQuery = supabase.from('profiles')
-      .select('id, full_name, email, role, schedule_hidden, team')
+      .select('id, full_name, email, role, schedule_hidden, team, languages')
       .neq('role', 'client').eq('active', true).order('full_name')
 
     const [membersRes, cellsRes, requestsRes] = await Promise.all([
@@ -124,39 +124,42 @@ export default function Calendar() {
     window.dispatchEvent(new CustomEvent('sophiefy:approvals-changed'))
   }
 
-  // Team sections first (orchid separators), then Members/Staff for untagged (slate separators).
+  // Team sections first (orchid separators, alpha by team name), then — for
+  // untagged members only — one section per first-language (alpha by
+  // language), then "Unassigned" for untagged members with no languages
+  // either, then the untagged Staff block last (slate separators throughout).
   const roleGroups = useMemo(() => {
+    const byName = (a, b) => (a.full_name ?? a.email).localeCompare(b.full_name ?? b.email)
+
     const tagged   = members.filter(m => m.team)
     const untagged = members.filter(m => !m.team)
     const rows = []
 
-    const teamNames = [...new Set(tagged.map(m => m.team))].sort()
-    for (const team of teamNames) {
-      const teamMembers = tagged
-        .filter(m => m.team === team)
-        .sort((a, b) => (a.full_name ?? a.email).localeCompare(b.full_name ?? b.email))
-      const visible = showHidden ? teamMembers : teamMembers.filter(m => !m.schedule_hidden)
-      if (!visible.length) continue
-      rows.push({ type: 'separator', kind: 'team', label: team })
+    const pushSection = (kind, label, list) => {
+      const visible = showHidden ? list : list.filter(m => !m.schedule_hidden)
+      if (!visible.length) return
+      rows.push({ type: 'separator', kind, label })
       visible.forEach(m => rows.push({ type: 'member', member: m, isHidden: !!m.schedule_hidden }))
     }
 
+    const teamNames = [...new Set(tagged.map(m => m.team))].sort()
+    for (const team of teamNames) {
+      pushSection('team', team, tagged.filter(m => m.team === team).sort(byName))
+    }
+
     const memberList = untagged.filter(m => m.role === 'member')
-    const staffList  = untagged.filter(m => STAFF_ROLES.includes(m.role))
+    const staffList  = untagged.filter(m => STAFF_ROLES.includes(m.role)).sort(byName)
 
-    const visibleMembers = showHidden ? memberList : memberList.filter(m => !m.schedule_hidden)
-    if (visibleMembers.length) {
-      rows.push({ type: 'separator', kind: 'role', label: 'Members' })
-      visibleMembers.forEach(m => rows.push({ type: 'member', member: m, isHidden: !!m.schedule_hidden }))
+    const withLanguage = memberList.filter(m => m.languages?.length)
+    const noLanguage    = memberList.filter(m => !m.languages?.length).sort(byName)
+
+    const languageNames = [...new Set(withLanguage.map(m => m.languages[0]))].sort()
+    for (const lang of languageNames) {
+      pushSection('language', lang, withLanguage.filter(m => m.languages[0] === lang).sort(byName))
     }
 
-    if (staffList.length) {
-      const visibleStaff = showHidden ? staffList : staffList.filter(m => !m.schedule_hidden)
-      if (visibleStaff.length) {
-        rows.push({ type: 'separator', kind: 'role', label: 'Staff' })
-        visibleStaff.forEach(m => rows.push({ type: 'member', member: m, isHidden: !!m.schedule_hidden }))
-      }
-    }
+    pushSection('role', 'Unassigned', noLanguage)
+    pushSection('role', 'Staff', staffList)
 
     return rows
   }, [members, showHidden])
@@ -258,7 +261,7 @@ export default function Calendar() {
                 if (row.type === 'separator') {
                   const isTeam = row.kind === 'team'
                   return (
-                    <tr key={isTeam ? `sep-team-${row.label}` : `sep-role-${row.label}`}>
+                    <tr key={`sep-${row.kind}-${row.label}`}>
                       <td
                         colSpan={8}
                         className={`px-4 py-1.5 text-[10px] font-bold uppercase tracking-widest border-b ${

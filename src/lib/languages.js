@@ -1,5 +1,5 @@
 export const LANGUAGES = [
-  'English', 'French', 'Greek', 'Polish', 'Bulgarian', 'Romanian',
-  'Spanish', 'Italian', 'German', 'Dutch', 'Portuguese', 'Arabic',
-  'Hungarian', 'Slovak', 'Czech', 'Serbian', 'Croatian',
+  'Arabic', 'Bulgarian', 'Croatian', 'Czech', 'Dutch', 'English',
+  'French', 'German', 'Greek', 'Hungarian', 'Italian', 'Polish',
+  'Portuguese', 'Romanian', 'Serbian', 'Slovak', 'Slovenian', 'Spanish',
 ]

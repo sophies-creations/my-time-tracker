@@ -44,10 +44,12 @@ export default function ProtectedRoute({ clientOnly = false }) {
   if (clientOnly && !isClient) return <Navigate to="/tracker" replace />
   if (!clientOnly && isClient) return <Navigate to="/client" replace />
 
-  // Block team members (non-clients) who haven't set their languages yet.
+  // Block members (not managers/admins/owners) who have neither a team tag
+  // nor languages set yet — those are the two ways an agent's schedule gets
+  // grouped, so at least one must be present before they can use the app.
   // The modal has no close/escape/backdrop-click — they must pick at least one.
   // It disappears automatically once refreshProfile() resolves with languages set.
-  if (!clientOnly && !profile?.languages?.length) {
+  if (!clientOnly && profile?.role === 'member' && !profile?.languages?.length && !profile?.team) {
     return (
       <>
         <Outlet />

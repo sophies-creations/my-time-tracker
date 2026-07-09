@@ -2,6 +2,7 @@ import { useState } from 'react'
 import { supabase } from '../lib/supabase'
 import { useAuth } from '../contexts/AuthContext'
 import LanguagesPicker from './LanguagesPicker'
+import toast from 'react-hot-toast'
 
 export default function LanguagesModal() {
   const { profile, refreshProfile } = useAuth()
@@ -27,7 +28,9 @@ export default function LanguagesModal() {
       refreshProfile()
     } catch (err) {
       console.error('[LanguagesModal] save error:', err)
-      setError(err?.message ?? 'Save failed — please try again')
+      const message = err?.message ?? 'Save failed — please try again'
+      setError(message)
+      toast.error(message)
       setSaving(false)
     }
   }
@@ -37,7 +40,7 @@ export default function LanguagesModal() {
       <div className="bg-surface rounded-2xl shadow-2xl w-full max-w-lg">
         <div className="px-6 py-5 border-b border-slate-100">
           <h2 className="text-base font-semibold text-slate-800">
-            Please select the languages you speak
+            Select your language(s) to continue
           </h2>
           <p className="text-sm text-slate-500 mt-1">
             Pick at least one language to continue. You can update this anytime in Profile Settings.

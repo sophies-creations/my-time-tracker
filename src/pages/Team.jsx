@@ -3,6 +3,7 @@ import { UserPlus, Copy, Check, Trash2, UserX, UserCheck, Pencil, X, Eye, EyeOff
 import { supabase } from '../lib/supabase'
 import { useAuth } from '../contexts/AuthContext'
 import InviteModal from '../components/InviteModal'
+import LanguagesPicker from '../components/LanguagesPicker'
 import toast from 'react-hot-toast'
 
 const ROLE_BADGE = {
@@ -23,6 +24,7 @@ export default function Team() {
   const [copiedId, setCopiedId]         = useState(null)
   const [editingName, setEditingName]   = useState(null) // { memberId, value }
   const [editingTeam, setEditingTeam]   = useState(null) // { memberId, value }
+  const [editingLanguages, setEditingLanguages] = useState(null) // { memberId, value: string[] }
   const [showHidden, setShowHidden]     = useState(false)
   const [statusFilter, setStatusFilter] = useState('active')
   const [setPwdTarget, setSetPwdTarget] = useState(null) // { id, full_name, email }
@@ -135,6 +137,17 @@ export default function Team() {
     if (error) { toast.error(error.message ?? 'Update failed'); return }
     toast.success(value.trim() ? `Team set to "${value.trim()}"` : 'Team tag cleared')
     setEditingTeam(null)
+    fetchMembers()
+  }
+
+  async function saveLanguages(memberId, value) {
+    const { error } = await supabase.rpc('admin_set_member_languages', {
+      p_user_id:   memberId,
+      p_languages: value,
+    })
+    if (error) { toast.error(error.message ?? 'Update failed'); return }
+    toast.success(value.length ? 'Languages updated' : 'Languages cleared')
+    setEditingLanguages(null)
     fetchMembers()
   }
 
@@ -341,6 +354,38 @@ export default function Team() {
                         ))}
                       </>
                     )}
+                    {isAdmin && !isMe && (
+                      <button
+                        onClick={() => setEditingLanguages({ memberId: member.id, value: member.languages ?? [] })}
+                        className="opacity-0 group-hover/name:opacity-100 transition-opacity text-slate-400 hover:text-orchid-600 p-0.5 flex-shrink-0"
+                        title={member.languages?.length ? 'Edit languages' : 'Add languages'}
+                      >
+                        <Pencil size={11} />
+                      </button>
+                    )}
+                  </div>
+                )}
+
+                {isAdmin && !isMe && editingLanguages?.memberId === member.id && (
+                  <div className="mt-2 p-3 rounded-lg border border-orchid-200 bg-orchid-50/40">
+                    <LanguagesPicker
+                      value={editingLanguages.value}
+                      onChange={value => setEditingLanguages(prev => ({ ...prev, value }))}
+                    />
+                    <div className="flex gap-2 justify-end mt-2">
+                      <button
+                        onClick={() => setEditingLanguages(null)}
+                        className="px-2.5 py-1 text-xs text-slate-600 hover:bg-slate-100 rounded font-medium"
+                      >
+                        Cancel
+                      </button>
+                      <button
+                        onClick={() => saveLanguages(member.id, editingLanguages.value)}
+                        className="px-2.5 py-1 text-xs text-white bg-orchid-600 hover:bg-orchid-700 rounded font-medium"
+                      >
+                        Save
+                      </button>
+                    </div>
                   </div>
                 )}
               </div>
