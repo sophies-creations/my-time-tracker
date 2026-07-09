@@ -125,9 +125,10 @@ export default function Calendar() {
   }
 
   // Team sections first (orchid separators, alpha by team name), then — for
-  // untagged members only — one section per first-language (alpha by
-  // language), then "Unassigned" for untagged members with no languages
-  // either, then the untagged Staff block last (slate separators throughout).
+  // untagged members only — one section per primary language (languages[0],
+  // alpha by language), then "Unassigned" for untagged members with no
+  // languages either, then the untagged Staff block last (slate separators
+  // throughout).
   const roleGroups = useMemo(() => {
     const byName = (a, b) => (a.full_name ?? a.email).localeCompare(b.full_name ?? b.email)
 
@@ -150,12 +151,12 @@ export default function Calendar() {
     const memberList = untagged.filter(m => m.role === 'member')
     const staffList  = untagged.filter(m => STAFF_ROLES.includes(m.role)).sort(byName)
 
-    const withLanguage = memberList.filter(m => m.languages?.length)
-    const noLanguage    = memberList.filter(m => !m.languages?.length).sort(byName)
+    const withPrimaryLanguage = memberList.filter(m => m.languages?.length)
+    const noLanguage          = memberList.filter(m => !m.languages?.length).sort(byName)
 
-    const languageNames = [...new Set(withLanguage.map(m => m.languages[0]))].sort()
-    for (const lang of languageNames) {
-      pushSection('language', lang, withLanguage.filter(m => m.languages[0] === lang).sort(byName))
+    const primaryLanguageNames = [...new Set(withPrimaryLanguage.map(m => m.languages[0]))].sort()
+    for (const lang of primaryLanguageNames) {
+      pushSection('language', lang, withPrimaryLanguage.filter(m => m.languages[0] === lang).sort(byName))
     }
 
     pushSection('role', 'Unassigned', noLanguage)

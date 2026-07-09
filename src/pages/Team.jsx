@@ -1,5 +1,5 @@
 import { useState, useEffect, useMemo } from 'react'
-import { UserPlus, Copy, Check, Trash2, UserX, UserCheck, Pencil, X, Eye, EyeOff, KeyRound } from 'lucide-react'
+import { UserPlus, Copy, Check, Trash2, UserX, UserCheck, Pencil, X, Eye, EyeOff, KeyRound, Star } from 'lucide-react'
 import { supabase } from '../lib/supabase'
 import { useAuth } from '../contexts/AuthContext'
 import InviteModal from '../components/InviteModal'
@@ -344,11 +344,17 @@ export default function Team() {
                     {member.languages?.length > 0 && (
                       <>
                         <span className="text-slate-300 select-none">–</span>
-                        {member.languages.map(lang => (
+                        {member.languages.map((lang, i) => (
                           <span
                             key={lang}
-                            className="text-[10px] font-medium px-1.5 py-0.5 rounded-full bg-orchid-50 text-orchid-700 border border-orchid-100"
+                            title={i === 0 ? 'Primary language' : undefined}
+                            className={`flex items-center gap-0.5 text-[10px] font-medium px-1.5 py-0.5 rounded-full border ${
+                              i === 0
+                                ? 'bg-amber-50 text-amber-700 border-amber-200'
+                                : 'bg-orchid-50 text-orchid-700 border-orchid-100'
+                            }`}
                           >
+                            {i === 0 && <Star size={9} className="fill-current" />}
                             {lang}
                           </span>
                         ))}
@@ -371,7 +377,13 @@ export default function Team() {
                     <LanguagesPicker
                       value={editingLanguages.value}
                       onChange={value => setEditingLanguages(prev => ({ ...prev, value }))}
+                      showPrimary
                     />
+                    {editingLanguages.value.length > 1 && (
+                      <p className="mt-2 text-xs text-slate-500">
+                        First pick is primary — click the star on another language to change it.
+                      </p>
+                    )}
                     <div className="flex gap-2 justify-end mt-2">
                       <button
                         onClick={() => setEditingLanguages(null)}

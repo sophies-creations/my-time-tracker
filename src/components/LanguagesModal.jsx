@@ -40,7 +40,7 @@ export default function LanguagesModal() {
       <div className="bg-surface rounded-2xl shadow-2xl w-full max-w-lg">
         <div className="px-6 py-5 border-b border-slate-100">
           <h2 className="text-base font-semibold text-slate-800">
-            Select your language(s) to continue
+            Select your language(s) and mark your primary
           </h2>
           <p className="text-sm text-slate-500 mt-1">
             Pick at least one language to continue. You can update this anytime in Profile Settings.
@@ -48,7 +48,12 @@ export default function LanguagesModal() {
         </div>
 
         <div className="px-6 py-5">
-          <LanguagesPicker value={selected} onChange={setSelected} />
+          <LanguagesPicker value={selected} onChange={setSelected} showPrimary />
+          {selected.length > 1 && (
+            <p className="mt-3 text-xs text-slate-500">
+              Your first pick is your primary language — click the star on another to change it.
+            </p>
+          )}
           {error && (
             <p className="mt-3 text-sm text-red-600 font-medium">{error}</p>
           )}
